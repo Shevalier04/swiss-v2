@@ -288,10 +288,20 @@ export const api = {
   async toggleTask(id: number): Promise<TaskItem> {
     const token = getStoredToken();
     try {
-      const res = await request<{ task: TaskItem }>(`/tasks/${id}/toggle`, {
-        method: 'PUT',
-      });
-      return res.task;
+      // First attempt direct PUT /tasks (Cloudflare Pages Functions standard)
+      try {
+        const res = await request<{ task: TaskItem }>('/tasks', {
+          method: 'PUT',
+          body: JSON.stringify({ id }),
+        });
+        return res.task;
+      } catch {
+        // Fallback to /tasks/:id/toggle
+        const res = await request<{ task: TaskItem }>(`/tasks/${id}/toggle`, {
+          method: 'PUT',
+        });
+        return res.task;
+      }
     } catch (e: any) {
       if (token) return localDb.toggleTask(token, id);
       throw e;
@@ -301,7 +311,11 @@ export const api = {
   async deleteTask(id: number): Promise<void> {
     const token = getStoredToken();
     try {
-      await request(`/tasks/${id}`, { method: 'DELETE' });
+      try {
+        await request(`/tasks?id=${id}`, { method: 'DELETE' });
+      } catch {
+        await request(`/tasks/${id}`, { method: 'DELETE' });
+      }
     } catch (e: any) {
       if (token) localDb.deleteTask(token, id);
     }

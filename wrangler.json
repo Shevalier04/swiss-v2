@@ -1,5 +1,12 @@
 {
   "name": "course-schedule",
   "pages_build_output_dir": "dist",
-  "compatibility_date": "2024-09-23"
+  "compatibility_date": "2024-09-23",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tasks-db",
+      "database_id": "your-d1-database-id"
+    }
+  ]
 }

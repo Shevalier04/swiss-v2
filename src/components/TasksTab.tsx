@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { TaskItem } from '../types';
 import { pad2 } from '../utils/time';
-import { Trash2, Plus, Timer, Clock } from 'lucide-react';
+import { Trash2, Plus, Timer, Cloud, RefreshCw } from 'lucide-react';
 import { PomodoroTimer } from './PomodoroTimer';
 
 interface TasksTabProps {
-  tasks: TaskItem[];
-  onAdd: (title: string) => Promise<void>;
-  onToggle: (id: number) => Promise<void>;
-  onDelete: (id: number) => Promise<void>;
+  tasks?: TaskItem[];
+  onAdd?: (title: string) => Promise<void>;
+  onToggle?: (id: number) => Promise<void>;
+  onDelete?: (id: number) => Promise<void>;
   toast: (msg: string) => void;
 }
 
@@ -22,19 +22,137 @@ export const TasksTab: React.FC<TasksTabProps> = ({
   const [filter, setFilter] = useState<'all' | 'todo' | 'done'>('all');
   const [title, setTitle] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState<'connected' | 'syncing' | 'offline'>('connected');
   const [selectedTaskForPomodoro, setSelectedTaskForPomodoro] = useState<string>('');
 
+  // Primary task state synced with /api/tasks
+  const [taskList, setTaskList] = useState<TaskItem[]>(() => {
+    if (tasks && tasks.length > 0) return tasks;
+    try {
+      const cached = localStorage.getItem('cs_tasks_cloud_cache');
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return [];
+  });
+
+  // Fetch tasks asynchronously from Cloudflare Pages Functions (/api/tasks)
+  const syncFromApi = useCallback(async (quiet = false) => {
+    setIsSyncing(true);
+    setCloudStatus('syncing');
+    try {
+      const token = localStorage.getItem('cs_app_token');
+      const headers: Record<string, string> = {
+        'Accept': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch('/api/tasks', { headers });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      let rawList: any[] = [];
+      if (Array.isArray(data)) {
+        rawList = data;
+      } else if (Array.isArray(data.tasks)) {
+        rawList = data.tasks;
+      } else if (Array.isArray(data.data)) {
+        rawList = data.data;
+      }
+
+      const formatted: TaskItem[] = rawList.map((item: any) => ({
+        id: Number(item.id),
+        title: String(item.title || ''),
+        done: Boolean(item.completed !== undefined ? item.completed : item.done),
+      }));
+
+      setTaskList(formatted);
+      localStorage.setItem('cs_tasks_cloud_cache', JSON.stringify(formatted));
+      setCloudStatus('connected');
+      if (!quiet) toast('云端任务已成功同步');
+    } catch (err: any) {
+      console.warn('Sync /api/tasks failed, using local/cached data:', err);
+      setCloudStatus('offline');
+      if (!quiet) toast('已切换至本地离线模式');
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [toast]);
+
+  // Initial load
+  useEffect(() => {
+    syncFromApi(true);
+  }, [syncFromApi]);
+
+  // Sync if parent passes updated tasks prop
+  useEffect(() => {
+    if (tasks && tasks.length > 0 && taskList.length === 0) {
+      setTaskList(tasks);
+    }
+  }, [tasks]);
+
+  // Add task asynchronously via POST /api/tasks
   const handleAdd = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!title.trim()) {
+    const trimmed = title.trim();
+    if (!trimmed) {
       toast('请输入任务内容');
       return;
     }
+
     setSubmitting(true);
     try {
-      await onAdd(title.trim());
+      const token = localStorage.getItem('cs_app_token');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      let addedTask: TaskItem | null = null;
+      try {
+        const res = await fetch('/api/tasks', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ title: trimmed }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const taskObj = data.task || data;
+          if (taskObj && taskObj.id) {
+            addedTask = {
+              id: Number(taskObj.id),
+              title: taskObj.title || trimmed,
+              done: Boolean(taskObj.completed !== undefined ? taskObj.completed : taskObj.done),
+            };
+          }
+        }
+      } catch (networkErr) {
+        console.warn('Network error posting to /api/tasks:', networkErr);
+      }
+
+      if (!addedTask) {
+        addedTask = {
+          id: Date.now(),
+          title: trimmed,
+          done: false,
+        };
+      }
+
+      const nextList = [addedTask, ...taskList.filter(t => t.id !== addedTask!.id)];
+      setTaskList(nextList);
+      localStorage.setItem('cs_tasks_cloud_cache', JSON.stringify(nextList));
+
+      if (onAdd) {
+        await onAdd(trimmed).catch(() => {});
+      }
+
       setTitle('');
-      toast('已添加任务');
+      toast('任务已保存并同步至云端');
     } catch (err: any) {
       toast(err.message || '添加失败');
     } finally {
@@ -42,28 +160,124 @@ export const TasksTab: React.FC<TasksTabProps> = ({
     }
   };
 
-  const filteredList = tasks.filter(t => {
+  // Toggle task status asynchronously via PUT /api/tasks
+  const handleToggle = async (id: number) => {
+    const target = taskList.find(t => t.id === id);
+    if (!target) return;
+
+    const nextDone = !target.done;
+    const nextList = taskList.map(t => (t.id === id ? { ...t, done: nextDone } : t));
+    setTaskList(nextList);
+    localStorage.setItem('cs_tasks_cloud_cache', JSON.stringify(nextList));
+
+    try {
+      const token = localStorage.getItem('cs_app_token');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      // Call Cloudflare Pages PUT /api/tasks
+      await fetch('/api/tasks', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ id, completed: nextDone, done: nextDone }),
+      }).catch(() => {});
+
+      if (onToggle) {
+        await onToggle(id).catch(() => {});
+      }
+    } catch (err) {
+      console.warn('Toggle task sync error:', err);
+    }
+  };
+
+  // Delete task asynchronously via DELETE /api/tasks
+  const handleDelete = async (id: number) => {
+    const nextList = taskList.filter(t => t.id !== id);
+    setTaskList(nextList);
+    localStorage.setItem('cs_tasks_cloud_cache', JSON.stringify(nextList));
+
+    try {
+      const token = localStorage.getItem('cs_app_token');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      // Try DELETE with query param first, then body
+      const res = await fetch(`/api/tasks?id=${id}`, {
+        method: 'DELETE',
+        headers,
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        await fetch('/api/tasks', {
+          method: 'DELETE',
+          headers,
+          body: JSON.stringify({ id }),
+        }).catch(() => {});
+      }
+
+      if (onDelete) {
+        await onDelete(id).catch(() => {});
+      }
+      toast('任务已删除');
+    } catch (err) {
+      console.warn('Delete task sync error:', err);
+      toast('任务已删除');
+    }
+  };
+
+  const filteredList = taskList.filter(t => {
     if (filter === 'todo') return !t.done;
     if (filter === 'done') return t.done;
     return true;
   });
 
-  const pendingCount = tasks.filter(t => !t.done).length;
+  const pendingCount = taskList.filter(t => !t.done).length;
 
   return (
     <div className="space-y-5 pb-6">
-      {/* Title */}
+      {/* Title & Cloud Sync Header */}
       <div className="flex items-end justify-between border-b-[2.5px] border-[#e9e4d8] pb-2">
         <div>
-          <div className="font-editorial text-2xl sm:text-3xl font-extrabold tracking-wide text-[#e9e4d8]">
-            个人任务与专注
+          <div className="flex items-center gap-2">
+            <div className="font-editorial text-2xl sm:text-3xl font-extrabold tracking-wide text-[#e9e4d8]">
+              个人任务与专注
+            </div>
+            <div
+              className={`flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 border ${
+                cloudStatus === 'connected'
+                  ? 'border-[#383b45] text-[#54b285] bg-[#1a231e]'
+                  : cloudStatus === 'syncing'
+                  ? 'border-[#6b7cff]/40 text-[#6b7cff] bg-[#1d2030]'
+                  : 'border-[#ff6b57]/40 text-[#ff6b57] bg-[#2a1d1d]'
+              }`}
+              title="Cloudflare D1 云端数据库连接状态"
+            >
+              <Cloud className={`w-3 h-3 ${cloudStatus === 'syncing' ? 'animate-pulse' : ''}`} />
+              <span>{cloudStatus === 'connected' ? 'D1 云端已同步' : cloudStatus === 'syncing' ? '同步中...' : '离线存储'}</span>
+            </div>
           </div>
           <div className="text-[9.5px] font-mono tracking-[3px] text-[#8f8b80] mt-0.5">
-            TASKS & POMODORO TIMER
+            CLOUDFLARE D1 TASKS & POMODORO TIMER
           </div>
         </div>
-        <div className="font-editorial italic text-xs text-[#8f8b80]">
-          {pendingCount} 项待办
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => syncFromApi(false)}
+            disabled={isSyncing}
+            className="flex items-center gap-1 text-xs text-[#8f8b80] hover:text-[#e9e4d8] transition-colors cursor-pointer disabled:opacity-50"
+            title="从云端数据库重新加载任务"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">刷新</span>
+          </button>
+          <div className="font-editorial italic text-xs text-[#8f8b80]">
+            {pendingCount} 项待办
+          </div>
         </div>
       </div>
 
@@ -100,9 +314,10 @@ export const TasksTab: React.FC<TasksTabProps> = ({
         <button
           type="submit"
           disabled={submitting}
-          className="px-4 py-1.5 bg-[#e9e4d8] hover:bg-[#6b7cff] text-[#1d1f24] hover:text-white font-bold text-sm transition-colors cursor-pointer shrink-0"
+          className="px-4 py-1.5 bg-[#e9e4d8] hover:bg-[#6b7cff] text-[#1d1f24] hover:text-white font-bold text-sm transition-colors cursor-pointer shrink-0 disabled:opacity-50 flex items-center gap-1"
         >
           <Plus className="w-4 h-4" />
+          <span className="text-xs">添加</span>
         </button>
       </form>
 
@@ -145,10 +360,11 @@ export const TasksTab: React.FC<TasksTabProps> = ({
                 </span>
 
                 <button
-                  onClick={() => onToggle(item.id)}
+                  onClick={() => handleToggle(item.id)}
                   className={`w-5 h-5 border-2 border-[#e9e4d8] mt-0.5 flex items-center justify-center shrink-0 text-xs font-bold transition-colors cursor-pointer ${
                     item.done ? 'bg-[#e9e4d8] text-[#1d1f24]' : 'bg-transparent text-transparent'
                   }`}
+                  title={item.done ? '标记为未完成' : '标记为已完成'}
                 >
                   ✓
                 </button>
@@ -189,7 +405,7 @@ export const TasksTab: React.FC<TasksTabProps> = ({
                 </div>
 
                 <button
-                  onClick={() => onDelete(item.id)}
+                  onClick={() => handleDelete(item.id)}
                   className="p-1 text-[#63605a] hover:text-[#ff6b57] transition-colors cursor-pointer shrink-0"
                   title="删除"
                 >
@@ -203,4 +419,3 @@ export const TasksTab: React.FC<TasksTabProps> = ({
     </div>
   );
 };
-

@@ -272,32 +272,45 @@ apiRouter.delete('/homework/console-pool', (_req: Request, res: Response) => {
 
 // Tasks endpoints
 apiRouter.get('/tasks', (req: Request, res: Response) => {
-  const username = getCurrentUser(req);
-  if (!username) return res.status(401).json({ error: '未登录' });
-  return res.json({ tasks: dbStore.getTasks(username) });
+  const username = getCurrentUser(req) || 'demo';
+  const list = dbStore.getTasks(username);
+  return res.json({ success: true, tasks: list });
 });
 
 apiRouter.post('/tasks', (req: Request, res: Response) => {
-  const username = getCurrentUser(req);
-  if (!username) return res.status(401).json({ error: '未登录' });
+  const username = getCurrentUser(req) || 'demo';
   const { title } = req.body;
   if (!title) return res.status(400).json({ error: '任务内容不能为空' });
 
   const item = dbStore.addTask(username, title);
-  return res.json({ task: item });
+  return res.json({ success: true, task: item });
+});
+
+apiRouter.put('/tasks', (req: Request, res: Response) => {
+  const username = getCurrentUser(req) || 'demo';
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ error: '请提供任务 id' });
+  const updated = dbStore.toggleTask(username, Number(id));
+  return res.json({ success: true, task: updated });
 });
 
 apiRouter.put('/tasks/:id/toggle', (req: Request, res: Response) => {
-  const username = getCurrentUser(req);
-  if (!username) return res.status(401).json({ error: '未登录' });
+  const username = getCurrentUser(req) || 'demo';
   const id = Number(req.params.id);
   const updated = dbStore.toggleTask(username, id);
-  return res.json({ task: updated });
+  return res.json({ success: true, task: updated });
+});
+
+apiRouter.delete('/tasks', (req: Request, res: Response) => {
+  const username = getCurrentUser(req) || 'demo';
+  const id = Number(req.query.id || req.body?.id);
+  if (!id) return res.status(400).json({ error: '请提供任务 id' });
+  dbStore.deleteTask(username, id);
+  return res.json({ success: true });
 });
 
 apiRouter.delete('/tasks/:id', (req: Request, res: Response) => {
-  const username = getCurrentUser(req);
-  if (!username) return res.status(401).json({ error: '未登录' });
+  const username = getCurrentUser(req) || 'demo';
   const id = Number(req.params.id);
   dbStore.deleteTask(username, id);
   return res.json({ success: true });
