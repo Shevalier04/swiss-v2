@@ -1,5 +1,5 @@
 /**
- * Cloudflare Pages Functions - Assignments API
+ * Cloudflare Pages Functions - Assignments API (独立用户隔离版)
  * Path: /api/assignments
  * D1 Database Binding: DB
  */
@@ -52,6 +52,7 @@ export type PagesFunction<
 
 interface DbAssignmentRow {
   id: number;
+  username?: string;
   course_name: string;
   title: string;
   deadline: string | null;
@@ -62,7 +63,7 @@ interface DbAssignmentRow {
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User, X-Username',
 };
 
 function jsonResponse(data: any, status = 200): Response {
@@ -81,6 +82,57 @@ function errorResponse(message: string, status = 400): Response {
 
 function checkDatabase(env: Env): boolean {
   return !!(env && env.DB && typeof env.DB.prepare === 'function');
+}
+
+/**
+ * 提取当前请求用户标识
+ */
+function getUsername(request: Request, body?: any): string {
+  // 1. Authorization: Bearer <token>
+  const auth = request.headers.get('Authorization') || request.headers.get('authorization');
+  if (auth && auth.startsWith('Bearer ')) {
+    const token = auth.slice(7).trim();
+    if (token) return token;
+  }
+
+  // 2. X-User / X-Username
+  const xUser = request.headers.get('X-User') || request.headers.get('X-Username');
+  if (xUser && xUser.trim()) return xUser.trim();
+
+  // 3. URL Query
+  try {
+    const url = new URL(request.url);
+    const qUser = url.searchParams.get('username') || url.searchParams.get('user');
+    if (qUser && qUser.trim()) return qUser.trim();
+  } catch (e) {}
+
+  // 4. Request Body
+  if (body?.username && typeof body.username === 'string' && body.username.trim()) {
+    return body.username.trim();
+  }
+
+  return 'default';
+}
+
+/**
+ * 平滑确保 assignments 具备 username 字段与索引
+ */
+async function ensureAssignmentsSchema(db: D1Database): Promise<void> {
+  try {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS assignments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL DEFAULT 'default',
+        course_name TEXT NOT NULL,
+        title TEXT NOT NULL,
+        deadline TEXT,
+        completed INTEGER NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`
+    ).run();
+    await db.prepare("ALTER TABLE assignments ADD COLUMN username TEXT NOT NULL DEFAULT 'default'").run().catch(() => {});
+    await db.prepare('CREATE INDEX IF NOT EXISTS idx_assignments_user ON assignments(username, created_at DESC)').run().catch(() => {});
+  } catch (e) {}
 }
 
 function mapRowToAssignment(row: DbAssignmentRow) {
@@ -110,32 +162,34 @@ export const onRequestOptions: PagesFunction<Env> = async () => {
 
 /**
  * GET /api/assignments
- * 获取全部作业
+ * 获取当前登录用户的独立作业列表
  */
 export const onRequestGet: PagesFunction<Env> = async (context) => {
-  const { env } = context;
+  const { request, env } = context;
 
   if (!checkDatabase(env)) {
-    return errorResponse(
-      'Cloudflare D1 数据库尚未绑定！请前往 Cloudflare Pages 控制台将 D1 绑定为 "DB"',
-      500
-    );
+    return errorResponse('Cloudflare D1 数据库尚未绑定为 "DB"', 500);
   }
+
+  const username = getUsername(request);
+  await ensureAssignmentsSchema(env.DB);
 
   try {
     const query = `
       SELECT id, course_name, title, deadline, completed, created_at
       FROM assignments
+      WHERE username = ?
       ORDER BY completed ASC, id DESC
     `;
-    const { results } = await env.DB.prepare(query).all<DbAssignmentRow>();
+    const { results } = await env.DB.prepare(query).bind(username).all<DbAssignmentRow>();
 
     const assignments = (results || []).map(mapRowToAssignment);
 
     return jsonResponse({
       success: true,
+      username,
       assignments,
-      homework: assignments, // 兼顾前端 homework 字段
+      homework: assignments,
     });
   } catch (error: any) {
     return errorResponse(`获取作业列表失败: ${error?.message || '未知错误'}`, 500);
@@ -144,9 +198,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
 /**
  * POST /api/assignments
- * 添加作业 或 批量导入作业
- * 单个作业: { course_name/course, title, deadline/due, completed/done }
- * 批量作业: { assignments: [...], replace?: boolean } 或 { items: [...] } 或 Array
+ * 为当前用户添加作业 或 批量导入作业
  */
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
@@ -155,8 +207,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return errorResponse('Cloudflare D1 数据库未绑定，变量名为 DB', 500);
   }
 
+  await ensureAssignmentsSchema(env.DB);
+
   try {
     const body = (await request.json().catch(() => ({}))) as any;
+    const username = getUsername(request, body);
 
     // 1. 批量导入
     const batchList: any[] = Array.isArray(body)
@@ -171,6 +226,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       if (batchList.length === 0 && !body?.replace) {
         return jsonResponse({
           success: true,
+          username,
           message: '导入作业列表为空',
           count: 0,
           assignments: [],
@@ -179,8 +235,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
       const statements: D1PreparedStatement[] = [];
 
+      // 若指定了 replace = true，仅清空当前用户的作业！绝不误删他人！
       if (body?.replace === true) {
-        statements.push(env.DB.prepare('DELETE FROM assignments'));
+        statements.push(env.DB.prepare('DELETE FROM assignments WHERE username = ?').bind(username));
       }
 
       for (const item of batchList) {
@@ -193,9 +250,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
         statements.push(
           env.DB.prepare(
-            `INSERT INTO assignments (course_name, title, deadline, completed, created_at)
-             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`
-          ).bind(courseName, title, deadline, completed)
+            `INSERT INTO assignments (username, course_name, title, deadline, completed, created_at)
+             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+          ).bind(username, courseName, title, deadline, completed)
         );
       }
 
@@ -206,15 +263,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       const { results } = await env.DB.prepare(
         `SELECT id, course_name, title, deadline, completed, created_at
          FROM assignments
+         WHERE username = ?
          ORDER BY completed ASC, id DESC`
-      ).all<DbAssignmentRow>();
+      ).bind(username).all<DbAssignmentRow>();
 
       const assignments = (results || []).map(mapRowToAssignment);
 
       return jsonResponse(
         {
           success: true,
-          message: `成功${body?.replace ? '替换并' : ''}导入 ${batchList.length} 项作业`,
+          username,
+          message: `成功为账号 [${username}] ${body?.replace ? '替换并' : ''}导入 ${batchList.length} 项作业`,
           count: batchList.length,
           assignments,
           homework: assignments,
@@ -234,9 +293,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const completed = (body.completed || body.done) ? 1 : 0;
 
     const insertStmt = env.DB.prepare(
-      `INSERT INTO assignments (course_name, title, deadline, completed, created_at)
-       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`
-    ).bind(courseName, title, deadline, completed);
+      `INSERT INTO assignments (username, course_name, title, deadline, completed, created_at)
+       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+    ).bind(username, courseName, title, deadline, completed);
 
     const result = await insertStmt.run();
     const lastId = result.meta?.last_row_id;
@@ -255,9 +314,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     if (lastId) {
       const fetched = await env.DB.prepare(
-        'SELECT id, course_name, title, deadline, completed, created_at FROM assignments WHERE id = ?'
+        'SELECT id, course_name, title, deadline, completed, created_at FROM assignments WHERE id = ? AND username = ?'
       )
-        .bind(lastId)
+        .bind(lastId, username)
         .first<DbAssignmentRow>();
       if (fetched) {
         createdAssignment = mapRowToAssignment(fetched);
@@ -267,6 +326,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return jsonResponse(
       {
         success: true,
+        username,
         message: '作业添加成功',
         assignment: createdAssignment,
         homework: createdAssignment,
@@ -280,8 +340,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
 /**
  * PUT /api/assignments
- * 更新作业（切换完成状态、修改标题、修改截止时间等）
- * Request Body: { id, completed?, done?, title?, deadline?, due?, course_name? }
+ * 更新作业（仅修改当前登录用户的作业）
  */
 export const onRequestPut: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
@@ -290,8 +349,12 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
     return errorResponse('Cloudflare D1 数据库未绑定，变量名为 DB', 500);
   }
 
+  await ensureAssignmentsSchema(env.DB);
+
   try {
     const body = (await request.json().catch(() => ({}))) as any;
+    const username = getUsername(request, body);
+
     if (body.id === undefined || body.id === null) {
       return errorResponse('必须提供作业 id', 400);
     }
@@ -302,13 +365,13 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
     }
 
     const existing = await env.DB.prepare(
-      'SELECT id, course_name, title, deadline, completed, created_at FROM assignments WHERE id = ?'
+      'SELECT id, course_name, title, deadline, completed, created_at FROM assignments WHERE id = ? AND (username = ? OR username = \'default\')'
     )
-      .bind(id)
+      .bind(id, username)
       .first<DbAssignmentRow>();
 
     if (!existing) {
-      return errorResponse(`未找到 id 为 ${id} 的作业`, 404);
+      return errorResponse(`未找到归属账号 [${username}] 的作业 (id: ${id})`, 404);
     }
 
     let newCompleted = existing.completed ? 1 : 0;
@@ -317,7 +380,6 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
     } else if (typeof body.done === 'boolean') {
       newCompleted = body.done ? 1 : 0;
     } else if (body.completed === undefined && body.done === undefined && !body.title && !body.deadline && !body.due) {
-      // Toggle
       newCompleted = existing.completed ? 0 : 1;
     }
 
@@ -331,10 +393,10 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
 
     await env.DB.prepare(
       `UPDATE assignments
-       SET course_name = ?, title = ?, deadline = ?, completed = ?
+       SET course_name = ?, title = ?, deadline = ?, completed = ?, username = ?
        WHERE id = ?`
     )
-      .bind(courseName, title, deadline, newCompleted, id)
+      .bind(courseName, title, deadline, newCompleted, username, id)
       .run();
 
     const updated = await env.DB.prepare(
@@ -368,9 +430,7 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
 
 /**
  * DELETE /api/assignments
- * 删除作业 或 一键清空所有作业
- * Query params: ?id=123 或 ?all=true
- * Body: { id: 123 } 或 { clearAll: true }
+ * 删除作业 或 仅清空当前用户的全部作业
  */
 export const onRequestDelete: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
@@ -379,18 +439,21 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
     return errorResponse('Cloudflare D1 数据库未绑定，变量名为 DB', 500);
   }
 
+  await ensureAssignmentsSchema(env.DB);
+
   try {
     const url = new URL(request.url);
     const queryId = url.searchParams.get('id');
     const isAll = url.searchParams.get('all') === 'true' || url.searchParams.get('clearAll') === 'true';
 
     const body = (await request.json().catch(() => ({}))) as any;
+    const username = getUsername(request, body);
 
     if (isAll || body?.clearAll) {
-      await env.DB.prepare('DELETE FROM assignments').run();
+      await env.DB.prepare('DELETE FROM assignments WHERE username = ?').bind(username).run();
       return jsonResponse({
         success: true,
-        message: '已清空全部作业',
+        message: `已清空账号 [${username}] 的全部作业`,
       });
     }
 
@@ -402,10 +465,12 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
     }
 
     if (!targetId || isNaN(targetId)) {
-      return errorResponse('请在 URL 参数 (?id=...) 或请求体中提供有效的作业 id，或通过 ?all=true 清空全部', 400);
+      return errorResponse('请在 URL 参数 (?id=...) 或请求体中提供有效的作业 id，或通过 ?all=true 清空当前账号全部作业', 400);
     }
 
-    await env.DB.prepare('DELETE FROM assignments WHERE id = ?').bind(targetId).run();
+    await env.DB.prepare('DELETE FROM assignments WHERE id = ? AND (username = ? OR username = \'default\')')
+      .bind(targetId, username)
+      .run();
 
     return jsonResponse({
       success: true,

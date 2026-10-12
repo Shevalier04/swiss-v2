@@ -1,5 +1,5 @@
 /**
- * Cloudflare Pages Functions - Tasks API
+ * Cloudflare Pages Functions - Tasks API (独立用户隔离版)
  * Path: /api/tasks
  * D1 Database Binding: DB
  */
@@ -52,6 +52,7 @@ export type PagesFunction<
 
 interface DbTaskRow {
   id: number;
+  username?: string;
   title: string;
   completed: number | boolean;
   created_at: string;
@@ -60,7 +61,7 @@ interface DbTaskRow {
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User, X-Username',
 };
 
 function jsonResponse(data: any, status = 200): Response {
@@ -82,6 +83,49 @@ function checkDatabase(env: Env): boolean {
 }
 
 /**
+ * 提取当前请求用户标识 (学号/用户名)
+ */
+function getUsername(request: Request, body?: any): string {
+  // 1. Authorization: Bearer <token>
+  const auth = request.headers.get('Authorization') || request.headers.get('authorization');
+  if (auth && auth.startsWith('Bearer ')) {
+    const token = auth.slice(7).trim();
+    if (token) return token;
+  }
+
+  // 2. X-User / X-Username 请求头
+  const xUser = request.headers.get('X-User') || request.headers.get('X-Username');
+  if (xUser && xUser.trim()) return xUser.trim();
+
+  // 3. URL Query: ?username=...
+  try {
+    const url = new URL(request.url);
+    const qUser = url.searchParams.get('username') || url.searchParams.get('user');
+    if (qUser && qUser.trim()) return qUser.trim();
+  } catch (e) {}
+
+  // 4. Request Body: { username: ... }
+  if (body?.username && typeof body.username === 'string' && body.username.trim()) {
+    return body.username.trim();
+  }
+
+  return 'default';
+}
+
+/**
+ * 自动平滑升级旧数据表（补充 username 字段与索引）
+ */
+async function ensureTasksSchema(db: D1Database): Promise<void> {
+  try {
+    await db.prepare(
+      'CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL DEFAULT \'default\', title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)'
+    ).run();
+    await db.prepare("ALTER TABLE tasks ADD COLUMN username TEXT NOT NULL DEFAULT 'default'").run().catch(() => {});
+    await db.prepare('CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(username, created_at DESC)').run().catch(() => {});
+  } catch (e) {}
+}
+
+/**
  * Handle OPTIONS preflight requests
  */
 export const onRequestOptions: PagesFunction<Env> = async () => {
@@ -93,21 +137,21 @@ export const onRequestOptions: PagesFunction<Env> = async () => {
 
 /**
  * GET /api/tasks
- * 获取任务列表
+ * 获取当前登录用户的独立任务列表
  */
 export const onRequestGet: PagesFunction<Env> = async (context) => {
-  const { env } = context;
+  const { request, env } = context;
 
   if (!checkDatabase(env)) {
-    return errorResponse(
-      'Cloudflare D1 数据库尚未绑定！请前往 Cloudflare Pages 控制台 -> Settings -> Functions -> D1 Database Bindings，将变量名设置为 "DB" 并绑定相应 D1 数据库。',
-      500
-    );
+    return errorResponse('Cloudflare D1 数据库尚未绑定为 "DB"', 500);
   }
 
+  const username = getUsername(request);
+  await ensureTasksSchema(env.DB);
+
   try {
-    const query = 'SELECT id, title, completed, created_at FROM tasks ORDER BY id DESC';
-    const { results } = await env.DB.prepare(query).all<DbTaskRow>();
+    const query = 'SELECT id, title, completed, created_at FROM tasks WHERE username = ? ORDER BY id DESC';
+    let { results } = await env.DB.prepare(query).bind(username).all<DbTaskRow>();
 
     const tasks = (results || []).map((row) => ({
       id: Number(row.id),
@@ -119,6 +163,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
     return jsonResponse({
       success: true,
+      username,
       tasks,
     });
   } catch (error: any) {
@@ -128,9 +173,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
 /**
  * POST /api/tasks
- * 添加新任务 或 批量导入任务
- * 单个任务 Request Body: { title: string }
- * 批量导入 Request Body: { tasks: Array<{ title: string; completed?: boolean }> } 或 直接 Array
+ * 为当前用户添加新任务或批量导入新任务
  */
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
@@ -139,8 +182,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return errorResponse('Cloudflare D1 数据库未绑定，变量名为 DB', 500);
   }
 
+  await ensureTasksSchema(env.DB);
+
   try {
     const body = (await request.json().catch(() => ({}))) as any;
+    const username = getUsername(request, body);
 
     // 1. 批量导入逻辑
     const batchList: any[] = Array.isArray(body)
@@ -167,8 +213,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           const completedVal = (item?.completed || item?.done) ? 1 : 0;
           statements.push(
             env.DB.prepare(
-              'INSERT INTO tasks (title, completed, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)'
-            ).bind(titleStr.trim(), completedVal)
+              'INSERT INTO tasks (username, title, completed, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)'
+            ).bind(username, titleStr.trim(), completedVal)
           );
         }
       }
@@ -179,10 +225,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
       await env.DB.batch(statements);
 
-      // 查询全部最新任务返回
       const { results } = await env.DB.prepare(
-        'SELECT id, title, completed, created_at FROM tasks ORDER BY id DESC'
-      ).all<DbTaskRow>();
+        'SELECT id, title, completed, created_at FROM tasks WHERE username = ? ORDER BY id DESC'
+      )
+        .bind(username)
+        .all<DbTaskRow>();
 
       const tasks = (results || []).map((row) => ({
         id: Number(row.id),
@@ -195,7 +242,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       return jsonResponse(
         {
           success: true,
-          message: `成功批量导入 ${statements.length} 个任务`,
+          username,
+          message: `成功为账号 [${username}] 批量导入 ${statements.length} 个任务`,
           count: statements.length,
           tasks,
         },
@@ -211,8 +259,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const title = rawTitle.trim();
     const insertStmt = env.DB.prepare(
-      'INSERT INTO tasks (title, completed, created_at) VALUES (?, 0, CURRENT_TIMESTAMP)'
-    ).bind(title);
+      'INSERT INTO tasks (username, title, completed, created_at) VALUES (?, ?, 0, CURRENT_TIMESTAMP)'
+    ).bind(username, title);
 
     const result = await insertStmt.run();
     const lastId = result.meta?.last_row_id;
@@ -227,9 +275,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     if (lastId) {
       const fetched = await env.DB.prepare(
-        'SELECT id, title, completed, created_at FROM tasks WHERE id = ?'
+        'SELECT id, title, completed, created_at FROM tasks WHERE id = ? AND username = ?'
       )
-        .bind(lastId)
+        .bind(lastId, username)
         .first<DbTaskRow>();
       if (fetched) {
         createdTask = {
@@ -245,6 +293,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return jsonResponse(
       {
         success: true,
+        username,
         message: '任务创建成功',
         task: createdTask,
       },
@@ -257,8 +306,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
 /**
  * PUT /api/tasks
- * 更新任务状态或标题
- * Request Body: { id: number, completed?: boolean, done?: boolean, title?: string }
+ * 更新任务状态（仅操作当前登录用户的任务）
  */
 export const onRequestPut: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
@@ -267,6 +315,8 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
     return errorResponse('Cloudflare D1 数据库未绑定，变量名为 DB', 500);
   }
 
+  await ensureTasksSchema(env.DB);
+
   try {
     const body = (await request.json().catch(() => ({}))) as {
       id?: number | string;
@@ -274,6 +324,8 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
       done?: boolean | number;
       title?: string;
     };
+
+    const username = getUsername(request, body);
 
     if (body.id === undefined || body.id === null) {
       return errorResponse('必须提供任务 id', 400);
@@ -284,15 +336,14 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
       return errorResponse('任务 id 无效', 400);
     }
 
-    // Check existing
     const existing = await env.DB.prepare(
-      'SELECT id, title, completed, created_at FROM tasks WHERE id = ?'
+      'SELECT id, title, completed, created_at FROM tasks WHERE id = ? AND (username = ? OR username = \'default\')'
     )
-      .bind(id)
+      .bind(id, username)
       .first<DbTaskRow>();
 
     if (!existing) {
-      return errorResponse(`未找到 id 为 ${id} 的任务`, 404);
+      return errorResponse(`未找到属于账号 [${username}] 的任务 (id: ${id})`, 404);
     }
 
     let newCompleted = existing.completed ? 1 : 0;
@@ -301,7 +352,6 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
     } else if (typeof body.done === 'boolean') {
       newCompleted = body.done ? 1 : 0;
     } else if (body.completed === undefined && body.done === undefined && body.title === undefined) {
-      // Toggle if no specific completed/title given
       newCompleted = existing.completed ? 0 : 1;
     }
 
@@ -310,8 +360,8 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
         ? body.title.trim()
         : existing.title;
 
-    await env.DB.prepare('UPDATE tasks SET title = ?, completed = ? WHERE id = ?')
-      .bind(newTitle, newCompleted, id)
+    await env.DB.prepare('UPDATE tasks SET title = ?, completed = ?, username = ? WHERE id = ?')
+      .bind(newTitle, newCompleted, username, id)
       .run();
 
     const updated = await env.DB.prepare(
@@ -338,9 +388,7 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
 
 /**
  * DELETE /api/tasks
- * 删除任务 或 一键清空所有任务
- * Query params: ?id=123 或 ?all=true
- * 或 Body: { id: 123 } / { clearAll: true }
+ * 删除任务 或 仅清空当前用户的全部任务
  */
 export const onRequestDelete: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
@@ -349,21 +397,22 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
     return errorResponse('Cloudflare D1 数据库未绑定，变量名为 DB', 500);
   }
 
+  await ensureTasksSchema(env.DB);
+
   try {
     const url = new URL(request.url);
     const queryId = url.searchParams.get('id');
     const isAll = url.searchParams.get('all') === 'true' || url.searchParams.get('clearAll') === 'true';
 
-    const body = (await request.json().catch(() => ({}))) as {
-      id?: number | string;
-      clearAll?: boolean;
-    };
+    const body = (await request.json().catch(() => ({}))) as any;
+    const username = getUsername(request, body);
 
     if (isAll || body?.clearAll) {
-      await env.DB.prepare('DELETE FROM tasks').run();
+      // 仅清空当前账号的任务，绝不误删其他同学的任务！
+      await env.DB.prepare('DELETE FROM tasks WHERE username = ?').bind(username).run();
       return jsonResponse({
         success: true,
-        message: '已清空全部任务',
+        message: `已清空账号 [${username}] 的全部任务`,
       });
     }
 
@@ -375,10 +424,13 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
     }
 
     if (!targetId || isNaN(targetId)) {
-      return errorResponse('请在 URL 参数 (?id=...) 或请求体中提供有效的任务 id，或 ?all=true 清空全部', 400);
+      return errorResponse('请提供有效的任务 id，或通过 ?all=true 清空当前账号全部任务', 400);
     }
 
-    await env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(targetId).run();
+    // 仅删除归属当前用户的该条任务
+    await env.DB.prepare('DELETE FROM tasks WHERE id = ? AND (username = ? OR username = \'default\')')
+      .bind(targetId, username)
+      .run();
 
     return jsonResponse({
       success: true,

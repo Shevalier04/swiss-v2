@@ -28,6 +28,7 @@ export const TasksTab: React.FC<TasksTabProps> = ({ toast }) => {
     };
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
+      headers['X-User'] = token;
     }
     return headers;
   };

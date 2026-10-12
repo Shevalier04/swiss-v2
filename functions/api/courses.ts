@@ -1,5 +1,5 @@
 /**
- * Cloudflare Pages Functions - Courses API
+ * Cloudflare Pages Functions - Courses API (独立用户隔离版)
  * Path: /api/courses
  * D1 Database Binding: DB
  */
@@ -52,6 +52,7 @@ export type PagesFunction<
 
 interface DbCourseRow {
   id: number;
+  username?: string;
   name: string;
   teacher: string | null;
   classroom: string | null;
@@ -66,7 +67,7 @@ interface DbCourseRow {
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User, X-Username',
 };
 
 function jsonResponse(data: any, status = 200): Response {
@@ -85,6 +86,61 @@ function errorResponse(message: string, status = 400): Response {
 
 function checkDatabase(env: Env): boolean {
   return !!(env && env.DB && typeof env.DB.prepare === 'function');
+}
+
+/**
+ * 提取当前请求的用户标识
+ */
+function getUsername(request: Request, body?: any): string {
+  // 1. Authorization: Bearer <token>
+  const auth = request.headers.get('Authorization') || request.headers.get('authorization');
+  if (auth && auth.startsWith('Bearer ')) {
+    const token = auth.slice(7).trim();
+    if (token) return token;
+  }
+
+  // 2. X-User / X-Username
+  const xUser = request.headers.get('X-User') || request.headers.get('X-Username');
+  if (xUser && xUser.trim()) return xUser.trim();
+
+  // 3. URL Query
+  try {
+    const url = new URL(request.url);
+    const qUser = url.searchParams.get('username') || url.searchParams.get('user');
+    if (qUser && qUser.trim()) return qUser.trim();
+  } catch (e) {}
+
+  // 4. Request Body
+  if (body?.username && typeof body.username === 'string' && body.username.trim()) {
+    return body.username.trim();
+  }
+
+  return 'default';
+}
+
+/**
+ * 平滑确保 courses 具备 username 字段与索引
+ */
+async function ensureCoursesSchema(db: D1Database): Promise<void> {
+  try {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS courses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL DEFAULT 'default',
+        name TEXT NOT NULL,
+        teacher TEXT,
+        classroom TEXT,
+        weekday INTEGER NOT NULL,
+        start_slot INTEGER NOT NULL,
+        end_slot INTEGER NOT NULL,
+        weeks TEXT,
+        color TEXT DEFAULT '#4f63e8',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`
+    ).run();
+    await db.prepare("ALTER TABLE courses ADD COLUMN username TEXT NOT NULL DEFAULT 'default'").run().catch(() => {});
+    await db.prepare('CREATE INDEX IF NOT EXISTS idx_courses_user ON courses(username, weekday)').run().catch(() => {});
+  } catch (e) {}
 }
 
 function mapRowToCourse(row: DbCourseRow) {
@@ -121,30 +177,32 @@ export const onRequestOptions: PagesFunction<Env> = async () => {
 
 /**
  * GET /api/courses
- * 查询全部课程
+ * 查询当前登录用户的独立课程列表
  */
 export const onRequestGet: PagesFunction<Env> = async (context) => {
-  const { env } = context;
+  const { request, env } = context;
 
   if (!checkDatabase(env)) {
-    return errorResponse(
-      'Cloudflare D1 数据库尚未绑定！请前往 Cloudflare Pages 控制台将 D1 绑定为 "DB"',
-      500
-    );
+    return errorResponse('Cloudflare D1 数据库尚未绑定为 "DB"', 500);
   }
+
+  const username = getUsername(request);
+  await ensureCoursesSchema(env.DB);
 
   try {
     const query = `
       SELECT id, name, teacher, classroom, weekday, start_slot, end_slot, weeks, color, created_at
       FROM courses
+      WHERE username = ?
       ORDER BY weekday ASC, start_slot ASC, id ASC
     `;
-    const { results } = await env.DB.prepare(query).all<DbCourseRow>();
+    const { results } = await env.DB.prepare(query).bind(username).all<DbCourseRow>();
 
     const courses = (results || []).map(mapRowToCourse);
 
     return jsonResponse({
       success: true,
+      username,
       courses,
     });
   } catch (error: any) {
@@ -154,10 +212,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
 /**
  * POST /api/courses
- * 添加课程 或 批量导入课程 (POST /api/courses 或 POST /api/courses/batch)
- * 支持结构:
- * 单个: { name, teacher, classroom/room, weekday/day, start_slot/s, end_slot/e, weeks, color }
- * 批量: { courses: [...], replace?: boolean } 或 直接 Array 或 { items: [...] }
+ * 添加课程 或 批量导入课程 (仅写入当前登录账号)
  */
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
@@ -166,8 +221,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return errorResponse('Cloudflare D1 数据库未绑定，变量名为 DB', 500);
   }
 
+  await ensureCoursesSchema(env.DB);
+
   try {
     const body = (await request.json().catch(() => ({}))) as any;
+    const username = getUsername(request, body);
 
     // 1. 批量插入/导入逻辑
     const batchList: any[] = Array.isArray(body)
@@ -182,6 +240,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       if (batchList.length === 0 && !body?.replace) {
         return jsonResponse({
           success: true,
+          username,
           message: '导入课程列表为空',
           count: 0,
           courses: [],
@@ -190,9 +249,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
       const statements: D1PreparedStatement[] = [];
 
-      // 如果指定了 replace = true，先清空已有课程
+      // 如果指定了 replace = true，仅清空当前用户的课程！绝不影响他人！
       if (body?.replace === true) {
-        statements.push(env.DB.prepare('DELETE FROM courses'));
+        statements.push(env.DB.prepare('DELETE FROM courses WHERE username = ?').bind(username));
       }
 
       for (const item of batchList) {
@@ -209,9 +268,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
         statements.push(
           env.DB.prepare(
-            `INSERT INTO courses (name, teacher, classroom, weekday, start_slot, end_slot, weeks, color, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
-          ).bind(name, teacher, classroom, weekday, startSlot, endSlot, weeks, color)
+            `INSERT INTO courses (username, name, teacher, classroom, weekday, start_slot, end_slot, weeks, color, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+          ).bind(username, name, teacher, classroom, weekday, startSlot, endSlot, weeks, color)
         );
       }
 
@@ -219,19 +278,20 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         await env.DB.batch(statements);
       }
 
-      // 查询全部最新课程返回
       const { results } = await env.DB.prepare(
         `SELECT id, name, teacher, classroom, weekday, start_slot, end_slot, weeks, color, created_at
          FROM courses
+         WHERE username = ?
          ORDER BY weekday ASC, start_slot ASC, id ASC`
-      ).all<DbCourseRow>();
+      ).bind(username).all<DbCourseRow>();
 
       const courses = (results || []).map(mapRowToCourse);
 
       return jsonResponse(
         {
           success: true,
-          message: `成功${body?.replace ? '替换并' : ''}导入 ${batchList.length} 门课程`,
+          username,
+          message: `成功为账号 [${username}] ${body?.replace ? '替换并' : ''}导入 ${batchList.length} 门课程`,
           count: batchList.length,
           courses,
         },
@@ -254,9 +314,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const color = (body.color || '#4f63e8').trim();
 
     const insertStmt = env.DB.prepare(
-      `INSERT INTO courses (name, teacher, classroom, weekday, start_slot, end_slot, weeks, color, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
-    ).bind(name, teacher, classroom, weekday, startSlot, endSlot, weeks, color);
+      `INSERT INTO courses (username, name, teacher, classroom, weekday, start_slot, end_slot, weeks, color, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+    ).bind(username, name, teacher, classroom, weekday, startSlot, endSlot, weeks, color);
 
     const result = await insertStmt.run();
     const lastId = result.meta?.last_row_id;
@@ -280,9 +340,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     if (lastId) {
       const fetched = await env.DB.prepare(
-        'SELECT id, name, teacher, classroom, weekday, start_slot, end_slot, weeks, color, created_at FROM courses WHERE id = ?'
+        'SELECT id, name, teacher, classroom, weekday, start_slot, end_slot, weeks, color, created_at FROM courses WHERE id = ? AND username = ?'
       )
-        .bind(lastId)
+        .bind(lastId, username)
         .first<DbCourseRow>();
       if (fetched) {
         createdCourse = mapRowToCourse(fetched);
@@ -292,6 +352,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return jsonResponse(
       {
         success: true,
+        username,
         message: '课程创建成功',
         course: createdCourse,
       },
@@ -304,8 +365,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
 /**
  * PUT /api/courses
- * 更新课程信息
- * Request Body: { id, name?, teacher?, classroom?/room?, weekday?/day?, start_slot?/s?, end_slot?/e?, weeks?, color? }
+ * 更新课程信息（仅操作当前登录用户的课程）
  */
 export const onRequestPut: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
@@ -314,8 +374,12 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
     return errorResponse('Cloudflare D1 数据库未绑定，变量名为 DB', 500);
   }
 
+  await ensureCoursesSchema(env.DB);
+
   try {
     const body = (await request.json().catch(() => ({}))) as any;
+    const username = getUsername(request, body);
+
     if (body.id === undefined || body.id === null) {
       return errorResponse('必须提供课程 id', 400);
     }
@@ -326,13 +390,13 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
     }
 
     const existing = await env.DB.prepare(
-      'SELECT id, name, teacher, classroom, weekday, start_slot, end_slot, weeks, color, created_at FROM courses WHERE id = ?'
+      'SELECT id, name, teacher, classroom, weekday, start_slot, end_slot, weeks, color, created_at FROM courses WHERE id = ? AND (username = ? OR username = \'default\')'
     )
-      .bind(id)
+      .bind(id, username)
       .first<DbCourseRow>();
 
     if (!existing) {
-      return errorResponse(`未找到 id 为 ${id} 的课程`, 404);
+      return errorResponse(`未找到归属账号 [${username}] 的课程 (id: ${id})`, 404);
     }
 
     const name = body.name !== undefined ? String(body.name).trim() : existing.name;
@@ -354,10 +418,10 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
 
     await env.DB.prepare(
       `UPDATE courses
-       SET name = ?, teacher = ?, classroom = ?, weekday = ?, start_slot = ?, end_slot = ?, weeks = ?, color = ?
+       SET name = ?, teacher = ?, classroom = ?, weekday = ?, start_slot = ?, end_slot = ?, weeks = ?, color = ?, username = ?
        WHERE id = ?`
     )
-      .bind(name, teacher, classroom, weekday, startSlot, endSlot, weeks, color, id)
+      .bind(name, teacher, classroom, weekday, startSlot, endSlot, weeks, color, username, id)
       .run();
 
     const updated = await env.DB.prepare(
@@ -378,9 +442,7 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
 
 /**
  * DELETE /api/courses
- * 删除单门课程 或 清空全部课程
- * Query params: ?id=123 或 ?all=true
- * Body: { id: 123 } 或 { clearAll: true }
+ * 删除课程 或 仅清空当前用户的全部课程
  */
 export const onRequestDelete: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
@@ -389,18 +451,22 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
     return errorResponse('Cloudflare D1 数据库未绑定，变量名为 DB', 500);
   }
 
+  await ensureCoursesSchema(env.DB);
+
   try {
     const url = new URL(request.url);
     const queryId = url.searchParams.get('id');
     const isAll = url.searchParams.get('all') === 'true' || url.searchParams.get('clearAll') === 'true';
 
     const body = (await request.json().catch(() => ({}))) as any;
+    const username = getUsername(request, body);
 
     if (isAll || body?.clearAll) {
-      await env.DB.prepare('DELETE FROM courses').run();
+      // 仅清空当前用户的课程
+      await env.DB.prepare('DELETE FROM courses WHERE username = ?').bind(username).run();
       return jsonResponse({
         success: true,
-        message: '已清空全部课程',
+        message: `已清空账号 [${username}] 的全部课程`,
       });
     }
 
@@ -412,10 +478,12 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
     }
 
     if (!targetId || isNaN(targetId)) {
-      return errorResponse('请在 URL 参数 (?id=...) 或请求体中提供有效的课程 id，或通过 ?all=true 清空全部', 400);
+      return errorResponse('请在 URL 参数 (?id=...) 或请求体中提供有效的课程 id，或通过 ?all=true 清空当前账号全部课程', 400);
     }
 
-    await env.DB.prepare('DELETE FROM courses WHERE id = ?').bind(targetId).run();
+    await env.DB.prepare('DELETE FROM courses WHERE id = ? AND (username = ? OR username = \'default\')')
+      .bind(targetId, username)
+      .run();
 
     return jsonResponse({
       success: true,

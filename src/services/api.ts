@@ -18,6 +18,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   headers.set('Content-Type', 'application/json');
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
+    headers.set('X-User', token);
   }
 
   const res = await fetch(`/api${endpoint}`, {
