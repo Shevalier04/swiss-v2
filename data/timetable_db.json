@@ -1,0 +1,637 @@
+{
+  "users": {
+    "2512114511": {
+      "username": "2512114511",
+      "name": "林东林",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114501": {
+      "username": "2612114501",
+      "name": "姜佳铭",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162690,
+      "disabled": false
+    },
+    "2612114502": {
+      "username": "2612114502",
+      "name": "郑俊源",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162690,
+      "disabled": false
+    },
+    "2612114503": {
+      "username": "2612114503",
+      "name": "林枫",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162690,
+      "disabled": false
+    },
+    "2612114504": {
+      "username": "2612114504",
+      "name": "苏晓铭",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162690,
+      "disabled": false
+    },
+    "2612114505": {
+      "username": "2612114505",
+      "name": "傅兴胜",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162690,
+      "disabled": false
+    },
+    "2612114506": {
+      "username": "2612114506",
+      "name": "陈伟杰",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162690,
+      "disabled": false
+    },
+    "2612114507": {
+      "username": "2612114507",
+      "name": "林元和",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162690,
+      "disabled": false
+    },
+    "2612114508": {
+      "username": "2612114508",
+      "name": "谢炟荣",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162690,
+      "disabled": false
+    },
+    "2612114509": {
+      "username": "2612114509",
+      "name": "黄圣涛",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114510": {
+      "username": "2612114510",
+      "name": "滕开键",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114511": {
+      "username": "2612114511",
+      "name": "张佳芝",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114512": {
+      "username": "2612114512",
+      "name": "郑鋆",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114513": {
+      "username": "2612114513",
+      "name": "丁艳杰",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114514": {
+      "username": "2612114514",
+      "name": "陈均涵",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114515": {
+      "username": "2612114515",
+      "name": "经森豪",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114516": {
+      "username": "2612114516",
+      "name": "叶长钧",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114517": {
+      "username": "2612114517",
+      "name": "李子烨",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114518": {
+      "username": "2612114518",
+      "name": "何婉静",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114519": {
+      "username": "2612114519",
+      "name": "蔡毅阳",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114520": {
+      "username": "2612114520",
+      "name": "阮泽冰",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114521": {
+      "username": "2612114521",
+      "name": "黄宇康",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114522": {
+      "username": "2612114522",
+      "name": "白佳乐",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114523": {
+      "username": "2612114523",
+      "name": "方晓敏",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114524": {
+      "username": "2612114524",
+      "name": "刘书钰",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114525": {
+      "username": "2612114525",
+      "name": "章志强",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114526": {
+      "username": "2612114526",
+      "name": "吴煜灿",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114527": {
+      "username": "2612114527",
+      "name": "陈哲铭",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114528": {
+      "username": "2612114528",
+      "name": "李奎佑",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114529": {
+      "username": "2612114529",
+      "name": "陈晶",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114530": {
+      "username": "2612114530",
+      "name": "郑佳豪",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114531": {
+      "username": "2612114531",
+      "name": "吴辰炀",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114532": {
+      "username": "2612114532",
+      "name": "杨榕煌",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114533": {
+      "username": "2612114533",
+      "name": "林琪竣",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114534": {
+      "username": "2612114534",
+      "name": "林佳德",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114535": {
+      "username": "2612114535",
+      "name": "刘抒凡",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114536": {
+      "username": "2612114536",
+      "name": "王为焓",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114537": {
+      "username": "2612114537",
+      "name": "黄义政",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114538": {
+      "username": "2612114538",
+      "name": "张雅婷",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114539": {
+      "username": "2612114539",
+      "name": "鲁传伟",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114540": {
+      "username": "2612114540",
+      "name": "翁晗冰",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "2612114541": {
+      "username": "2612114541",
+      "name": "余哲涛",
+      "pwHash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "role": "user",
+      "created": 1791613162691,
+      "disabled": false
+    },
+    "admin": {
+      "username": "admin",
+      "name": "系统管理员",
+      "pwHash": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
+      "role": "admin",
+      "created": 1791613162690,
+      "disabled": false
+    }
+  },
+  "courses": {
+    "2612114501": [
+      {
+        "id": 2000,
+        "name": "Web编程技术",
+        "teacher": "葛江玲",
+        "room": "博学1-101-102-专业机房1",
+        "day": 0,
+        "s": 1,
+        "e": 2,
+        "weeks": "2-14周,16-17周",
+        "color": "#4f63e8"
+      },
+      {
+        "id": 2001,
+        "name": "专业见习",
+        "teacher": "刘斌",
+        "room": "逸夫1-409",
+        "day": 0,
+        "s": 1,
+        "e": 4,
+        "weeks": "15周",
+        "color": "#3d4450"
+      },
+      {
+        "id": 2002,
+        "name": "工程训练III",
+        "teacher": "易吉祥",
+        "room": "逸夫2-306-3D打印工训室",
+        "day": 0,
+        "s": 1,
+        "e": 8,
+        "weeks": "18周",
+        "color": "#7a766c"
+      },
+      {
+        "id": 2003,
+        "name": "Java开发技术",
+        "teacher": "朱薇",
+        "room": "明理9-310",
+        "day": 0,
+        "s": 3,
+        "e": 4,
+        "weeks": "2-14周,16-17周",
+        "color": "#a85268"
+      },
+      {
+        "id": 2004,
+        "name": "形势与政策1",
+        "teacher": "张庭珲",
+        "room": "明理8-607",
+        "day": 0,
+        "s": 7,
+        "e": 8,
+        "weeks": "13-14周",
+        "color": "#4f63e8"
+      },
+      {
+        "id": 2005,
+        "name": "Web编程技术",
+        "teacher": "葛江玲",
+        "room": "明理9-310",
+        "day": 1,
+        "s": 1,
+        "e": 2,
+        "weeks": "2-14周,16-17周",
+        "color": "#4f63e8"
+      },
+      {
+        "id": 2006,
+        "name": "专业见习",
+        "teacher": "刘斌",
+        "room": "逸夫1-409",
+        "day": 1,
+        "s": 1,
+        "e": 4,
+        "weeks": "15周",
+        "color": "#3d4450"
+      },
+      {
+        "id": 2007,
+        "name": "工程训练III",
+        "teacher": "易吉祥",
+        "room": "逸夫2-306-3D打印工训室",
+        "day": 1,
+        "s": 1,
+        "e": 8,
+        "weeks": "18周",
+        "color": "#7a766c"
+      },
+      {
+        "id": 2008,
+        "name": "计算机网络",
+        "teacher": "郑晓东",
+        "room": "明理9-310",
+        "day": 1,
+        "s": 3,
+        "e": 4,
+        "weeks": "2-14周,16-17周",
+        "color": "#9a7448"
+      },
+      {
+        "id": 2009,
+        "name": "计算机网络",
+        "teacher": "郑晓东",
+        "room": "博学1-104-专业机房2",
+        "day": 1,
+        "s": 5,
+        "e": 6,
+        "weeks": "2-14周,16-17周",
+        "color": "#9a7448"
+      },
+      {
+        "id": 2010,
+        "name": "形势与政策1",
+        "teacher": "张庭珲",
+        "room": "高校邦平台xmut.gaoxiaobang.com",
+        "day": 1,
+        "s": 11,
+        "e": 11,
+        "weeks": "17-18周",
+        "color": "#4f63e8"
+      },
+      {
+        "id": 2011,
+        "name": "Java开发技术",
+        "teacher": "朱薇",
+        "room": "博学1-104-专业机房2",
+        "day": 2,
+        "s": 1,
+        "e": 2,
+        "weeks": "2-3周,5-14周,16-17周",
+        "color": "#a85268"
+      },
+      {
+        "id": 2012,
+        "name": "专业见习",
+        "teacher": "刘斌",
+        "room": "逸夫1-409",
+        "day": 2,
+        "s": 1,
+        "e": 4,
+        "weeks": "15周",
+        "color": "#3d4450"
+      },
+      {
+        "id": 2013,
+        "name": "数据库概论",
+        "teacher": "陈晓艳",
+        "room": "明理9-310",
+        "day": 2,
+        "s": 3,
+        "e": 4,
+        "weeks": "2-14周,16-17周",
+        "color": "#4e8a6a"
+      },
+      {
+        "id": 2014,
+        "name": "数据库概论",
+        "teacher": "陈晓艳",
+        "room": "博学1-104-专业机房2",
+        "day": 3,
+        "s": 1,
+        "e": 2,
+        "weeks": "2-14周,16-17周",
+        "color": "#4e8a6a"
+      },
+      {
+        "id": 2015,
+        "name": "专业见习",
+        "teacher": "刘斌",
+        "room": "逸夫1-409",
+        "day": 3,
+        "s": 1,
+        "e": 4,
+        "weeks": "15周",
+        "color": "#3d4450"
+      },
+      {
+        "id": 2016,
+        "name": "工程训练III",
+        "teacher": "易吉祥",
+        "room": "逸夫2-306-3D打印工训室",
+        "day": 3,
+        "s": 1,
+        "e": 8,
+        "weeks": "18周",
+        "color": "#7a766c"
+      },
+      {
+        "id": 2017,
+        "name": "软件工程导论",
+        "teacher": "张素娟",
+        "room": "博学1-101-102-专业机房1",
+        "day": 3,
+        "s": 3,
+        "e": 4,
+        "weeks": "2-14周,16-17周",
+        "color": "#4a6b80"
+      },
+      {
+        "id": 2018,
+        "name": "界面设计",
+        "teacher": "郑莉",
+        "room": "博学1-212A-专业机房3",
+        "day": 3,
+        "s": 5,
+        "e": 6,
+        "weeks": "2-14周,16-17周",
+        "color": "#7a70a0"
+      },
+      {
+        "id": 2019,
+        "name": "界面设计",
+        "teacher": "郑莉",
+        "room": "博学1-212A-专业机房3",
+        "day": 3,
+        "s": 7,
+        "e": 8,
+        "weeks": "2-14周,16-17周",
+        "color": "#7a70a0"
+      },
+      {
+        "id": 2020,
+        "name": "大学生心理健康",
+        "teacher": "何贻婷",
+        "room": "高校邦平台xmut.gaoxiaobang.com",
+        "day": 3,
+        "s": 11,
+        "e": 11,
+        "weeks": "3-18周",
+        "color": "#4f63e8"
+      },
+      {
+        "id": 2021,
+        "name": "专业见习",
+        "teacher": "刘斌",
+        "room": "逸夫1-409",
+        "day": 4,
+        "s": 1,
+        "e": 4,
+        "weeks": "15周",
+        "color": "#3d4450"
+      },
+      {
+        "id": 2022,
+        "name": "工程训练III",
+        "teacher": "易吉祥",
+        "room": "逸夫2-306-3D打印工训室",
+        "day": 4,
+        "s": 3,
+        "e": 8,
+        "weeks": "18周",
+        "color": "#7a766c"
+      },
+      {
+        "id": 2023,
+        "name": "软件工程导论",
+        "teacher": "张素娟",
+        "room": "明理1-405A-翻转教室",
+        "day": 4,
+        "s": 5,
+        "e": 6,
+        "weeks": "2-14周,16-17周",
+        "color": "#4a6b80"
+      },
+      {
+        "id": 2024,
+        "name": "专业见习",
+        "teacher": "刘斌",
+        "room": "校外实践基地",
+        "day": 5,
+        "s": 1,
+        "e": 4,
+        "weeks": "15周",
+        "color": "#3d4450"
+      }
+    ]
+  },
+  "homework": {},
+  "tasks": {},
+  "notices": [
+    {
+      "id": 1,
+      "text": "本周五下午全校停电演练，逸夫楼实训课调至周六上午进行，请互相转告！",
+      "by": "admin",
+      "time": 1791605962691
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "name": "掌上课表 · Swiss Editorial",
+  "description": "高格调瑞士排版风大学课程表小程序，支持周次切换、作业倒计时联动、上课提醒、桌面小组件生成、PDF教务导入与多账号管理。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

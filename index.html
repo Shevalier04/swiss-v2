@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <script>
+      // Suppress harmless Vite HMR WebSocket closing messages in cloud sandbox iframe
+      window.addEventListener('unhandledrejection', function (e) {
+        if (e && e.reason && String(e.reason.message || e.reason).includes('WebSocket')) {
+          e.preventDefault();
+        }
+      });
+      window.addEventListener('error', function (e) {
+        if (e && e.message && String(e.message).includes('WebSocket')) {
+          e.preventDefault();
+        }
+      });
+      const _origConsoleError = console.error;
+      console.error = function (...args) {
+        if (typeof args[0] === 'string' && (args[0].includes('[vite] WebSocket') || args[0].includes('WebSocket closed'))) {
+          return;
+        }
+        _origConsoleError.apply(console, args);
+      };
+    </script>
+    <title>掌上课表 · Swiss Editorial</title>
+    <meta name="description" content="高格调瑞士排版风大学课程表小程序，支持周次切换、作业倒计时联动、上课提醒、桌面小组件生成、PDF教务导入与多账号管理。" />
+    <meta property="og:title" content="掌上课表 · Swiss Editorial" />
+    <meta property="og:description" content="高格调瑞士排版风大学课程表小程序，支持周次切换、作业倒计时联动、上课提醒、桌面小组件生成、PDF教务导入与多账号管理。" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#1d1f24" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="掌上课表" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/pwa-192x192.png" />
+  </head>
+  <body class="bg-[#1d1f24] text-[#e9e4d8] select-none antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

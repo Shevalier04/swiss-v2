@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --paper: #1d1f24;
+    --ink: #e9e4d8;
+    --sub: #8f8b80;
+    --dim: #63605a;
+    --blue: #6b7cff;
+    --red: #ff6b57;
+    --hairline: #33363d;
+    --hairline2: #2a2d34;
+    color-scheme: dark;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+  }
+
+  body {
+    background-color: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    margin: 0;
+    padding: 0;
+    height: 100dvh;
+    overflow: hidden;
+  }
+}
+
+/* Authentic Paper Texture Gridlines */
+.editorial-paper-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-color: #1d1f24;
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 27px,
+    rgba(233, 228, 216, 0.035) 27px,
+    rgba(233, 228, 216, 0.035) 28px
+  );
+}
+
+/* Serif font style for editorial headings */
+.font-editorial {
+  font-family: "Songti SC", "STSong", "Noto Serif SC", "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #33363d;
+  border-radius: 2px;
+}
