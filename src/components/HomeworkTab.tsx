@@ -12,6 +12,7 @@ interface HomeworkTabProps {
   onBatchAdd?: (items: { course: string; title: string; due?: string }[]) => Promise<void>;
   onToggle: (id: number) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
+  onImportPreset?: () => void;
   toast: (msg: string) => void;
 }
 
@@ -23,6 +24,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
   onBatchAdd,
   onToggle,
   onDelete,
+  onImportPreset,
   toast,
 }) => {
   const [filter, setFilter] = useState<'all' | 'todo' | 'done'>('all');
@@ -195,8 +197,22 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
 
       {/* Homework List */}
       {filteredList.length === 0 ? (
-        <div className="py-12 text-center text-[#63605a] font-editorial italic text-sm">
-          — 暂无作业 —
+        <div className="py-10 px-4 text-center bg-[#1e222c] border border-dashed border-[#6b7cff]/40 rounded space-y-2">
+          <div className="text-sm font-bold text-[#e9e4d8]">☁️ 云端数据库暂无待办作业</div>
+          <div className="text-xs text-[#8f8b80]">
+            {filter !== 'all' ? '当前筛选下无匹配作业' : '暂无作业记录。可通过上方表单添加，或一键导入示例作业'}
+          </div>
+          {onImportPreset && filter === 'all' && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={onImportPreset}
+                className="px-3.5 py-1.5 bg-[#6b7cff] hover:bg-[#5868e6] text-white text-xs font-bold rounded cursor-pointer transition-colors"
+              >
+                一键导入 5 项示例作业
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="divide-y divide-[#2a2d34]">

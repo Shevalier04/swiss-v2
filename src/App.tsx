@@ -3,6 +3,7 @@ import { User, Course, Homework, TaskItem, Notice, RemindSettings } from './type
 import { api } from './services/api';
 import { SLOTS, toMinutes, isCourseInWeek, getWeekNo, getNextDayInfo, isSundayEvening } from './utils/time';
 import { playReminderBeep } from './utils/audio';
+import { SAMPLE_ASSIGNMENTS } from './utils/sampleData';
 
 import { PWAInstallBar } from './components/PWAInstallBar';
 import { AuthView } from './components/AuthView';
@@ -18,6 +19,7 @@ import { PdfImportModal } from './components/PdfImportModal';
 import { AdminTerminalModal } from './components/AdminTerminalModal';
 import { ReminderToast } from './components/ReminderToast';
 import { SundayEveModal } from './components/SundayEveModal';
+import { DataManagementModal } from './components/DataManagementModal';
 
 import {
   CalendarDays,
@@ -25,6 +27,8 @@ import {
   FileCheck2,
   CheckSquare,
   User as UserIcon,
+  Database,
+  Cloud,
 } from 'lucide-react';
 
 export default function App() {
@@ -65,6 +69,7 @@ export default function App() {
   const [coursePreset, setCoursePreset] = useState<{ day: number; s: number; e: number; weeks?: string } | null>(null);
   const [pdfFileToImport, setPdfFileToImport] = useState<File | null>(null);
   const [isAdminTerminalOpen, setIsAdminTerminalOpen] = useState(false);
+  const [isDataManagementOpen, setIsDataManagementOpen] = useState(false);
 
   // Active floating reminder toast
   const [activeReminderCourse, setActiveReminderCourse] = useState<Course | null>(null);
@@ -387,9 +392,20 @@ export default function App() {
     try {
       const resetCourses = await api.resetTemplateCourses();
       setCourses(resetCourses);
-      showToast('预置课表已成功恢复');
+      await loadAllUserData();
+      showToast('25 门示例课表已同步至云端 D1');
     } catch (e: any) {
       showToast(e.message || '重置失败');
+    }
+  };
+
+  const handleImportPresetHw = async () => {
+    try {
+      await api.batchAddHomework(SAMPLE_ASSIGNMENTS, false);
+      await loadAllUserData();
+      showToast('5 项示例作业已同步至云端 D1');
+    } catch (e: any) {
+      showToast(e.message || '导入作业失败');
     }
   };
 
@@ -469,6 +485,24 @@ export default function App() {
           <PWAInstallBar />
         </div>
 
+        {/* Top Cloud Status Bar & Data Management Trigger */}
+        <div className="px-4 py-2 flex items-center justify-between border-b border-[#33363d]/60 bg-[#17191e] shrink-0 text-xs select-none">
+          <div className="flex items-center gap-1.5 font-mono text-[11px] text-[#8f8b80]">
+            <Cloud className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="text-[#e9e4d8] font-bold">D1 边缘云存储</span>
+            <span className="text-[#63605a]">|</span>
+            <span>{courses.length}课 / {homework.length}作业 / {tasks.length}任务</span>
+          </div>
+          <button
+            onClick={() => setIsDataManagementOpen(true)}
+            className="flex items-center gap-1 px-2.5 py-0.5 rounded bg-[#6b7cff]/20 text-[#6b7cff] hover:bg-[#6b7cff] hover:text-white transition-all cursor-pointer text-xs font-bold border border-[#6b7cff]/40 shadow-xs active:scale-95"
+            title="数据管理与一键导入"
+          >
+            <Database className="w-3 h-3" />
+            <span>数据管理</span>
+          </button>
+        </div>
+
         {/* Scrollable Tab Page Container */}
         <main className="flex-1 overflow-y-auto px-4.5 pt-3 pb-6 overscroll-contain">
           {activeTab === 'today' && (
@@ -484,6 +518,8 @@ export default function App() {
                 setCoursePreset(null);
               }}
               onOpenWeekSchedule={() => setActiveTab('week')}
+              onOpenDataManagement={() => setIsDataManagementOpen(true)}
+              onImportPreset={handleResetTemplate}
             />
           )}
 
@@ -505,6 +541,8 @@ export default function App() {
                 });
               }}
               onRefreshCourses={loadAllUserData}
+              onOpenDataManagement={() => setIsDataManagementOpen(true)}
+              onImportPreset={handleResetTemplate}
               sundayAutoAdvance={remindSettings.sundayAutoAdvance}
               toast={showToast}
             />
@@ -519,6 +557,7 @@ export default function App() {
               onBatchAdd={handleBatchAddHw}
               onToggle={handleToggleHw}
               onDelete={handleDeleteHw}
+              onImportPreset={handleImportPresetHw}
               toast={showToast}
             />
           )}
@@ -537,6 +576,7 @@ export default function App() {
               pendingTaskCount={pendingTaskCount}
               onLogout={handleLogout}
               onOpenAdmin={() => setIsAdminTerminalOpen(true)}
+              onOpenDataManagement={() => setIsDataManagementOpen(true)}
               onSwitchTab={tab => setActiveTab(tab)}
               onResetTemplate={handleResetTemplate}
               onExportData={handleExportData}
@@ -716,6 +756,17 @@ export default function App() {
           onRefreshParent={loadAllUserData}
         />
       )}
+
+      {/* Cloud Data Management Modal */}
+      <DataManagementModal
+        isOpen={isDataManagementOpen}
+        onClose={() => setIsDataManagementOpen(false)}
+        courses={courses}
+        homework={homework}
+        tasks={tasks}
+        onRefresh={loadAllUserData}
+        toast={showToast}
+      />
 
       {/* Toast Notification */}
       {toastMsg && (

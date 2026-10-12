@@ -37,6 +37,8 @@ interface TodayTabProps {
   onDismissNotice: (id: number) => void;
   onOpenCourse: (course: Course) => void;
   onOpenWeekSchedule?: () => void;
+  onOpenDataManagement?: () => void;
+  onImportPreset?: () => void;
 }
 
 export const TodayTab: React.FC<TodayTabProps> = ({
@@ -48,6 +50,8 @@ export const TodayTab: React.FC<TodayTabProps> = ({
   onDismissNotice,
   onOpenCourse,
   onOpenWeekSchedule,
+  onOpenDataManagement,
+  onImportPreset,
 }) => {
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [previewTomorrow, setPreviewTomorrow] = useState(false);
@@ -562,7 +566,32 @@ export const TodayTab: React.FC<TodayTabProps> = ({
       </div>
 
       {/* Grouped Timetable */}
-      {displayCourses.length === 0 ? (
+      {courses.length === 0 ? (
+        <div className="py-8 px-4 text-center bg-[#1e222c] border border-dashed border-[#6b7cff]/40 rounded space-y-2">
+          <div className="text-sm font-bold text-[#e9e4d8]">☁️ 云端数据库暂无课表数据</div>
+          <div className="text-xs text-[#8f8b80]">
+            尚未录入全学期课程。一键导入 25 门示例课表即可开始使用今日日程排布。
+          </div>
+          <div className="pt-2 flex justify-center gap-2">
+            {onImportPreset && (
+              <button
+                onClick={onImportPreset}
+                className="px-3 py-1.5 bg-[#6b7cff] hover:bg-[#5868e6] text-white text-xs font-bold rounded cursor-pointer transition-colors"
+              >
+                一键导入示例课表
+              </button>
+            )}
+            {onOpenDataManagement && (
+              <button
+                onClick={onOpenDataManagement}
+                className="px-3 py-1.5 bg-[#2a2d34] hover:bg-[#33363d] text-[#e9e4d8] text-xs font-bold rounded cursor-pointer transition-colors border border-[#e9e4d8]/40"
+              >
+                数据管理
+              </button>
+            )}
+          </div>
+        </div>
+      ) : displayCourses.length === 0 ? (
         <div className="py-12 text-center text-[#63605a] font-editorial italic text-sm">
           — {previewTomorrow ? '明天没有课' : '今天没有课，好好休息'} —
         </div>

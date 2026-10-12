@@ -128,8 +128,9 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
 /**
  * POST /api/tasks
- * 添加新任务
- * Request Body: { title: string }
+ * 添加新任务 或 批量导入任务
+ * 单个任务 Request Body: { title: string }
+ * 批量导入 Request Body: { tasks: Array<{ title: string; completed?: boolean }> } 或 直接 Array
  */
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
@@ -139,9 +140,71 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   }
 
   try {
-    const body = await request.json().catch(() => ({})) as { title?: string };
-    const rawTitle = body?.title;
+    const body = (await request.json().catch(() => ({}))) as any;
 
+    // 1. 批量导入逻辑
+    const batchList: any[] = Array.isArray(body)
+      ? body
+      : Array.isArray(body?.tasks)
+      ? body.tasks
+      : Array.isArray(body?.items)
+      ? body.items
+      : null;
+
+    if (batchList) {
+      if (batchList.length === 0) {
+        return jsonResponse({
+          success: true,
+          message: '导入列表为空，无任务添加',
+          count: 0,
+        });
+      }
+
+      const statements: D1PreparedStatement[] = [];
+      for (const item of batchList) {
+        const titleStr = typeof item === 'string' ? item : (item?.title || item?.name);
+        if (titleStr && typeof titleStr === 'string' && titleStr.trim()) {
+          const completedVal = (item?.completed || item?.done) ? 1 : 0;
+          statements.push(
+            env.DB.prepare(
+              'INSERT INTO tasks (title, completed, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)'
+            ).bind(titleStr.trim(), completedVal)
+          );
+        }
+      }
+
+      if (statements.length === 0) {
+        return errorResponse('有效任务项为空，请提供包含有效 title 的任务列表', 400);
+      }
+
+      await env.DB.batch(statements);
+
+      // 查询全部最新任务返回
+      const { results } = await env.DB.prepare(
+        'SELECT id, title, completed, created_at FROM tasks ORDER BY id DESC'
+      ).all<DbTaskRow>();
+
+      const tasks = (results || []).map((row) => ({
+        id: Number(row.id),
+        title: row.title,
+        completed: Boolean(row.completed),
+        done: Boolean(row.completed),
+        created_at: row.created_at,
+      }));
+
+      return jsonResponse(
+        {
+          success: true,
+          message: `成功批量导入 ${statements.length} 个任务`,
+          count: statements.length,
+          tasks,
+        },
+        201
+      );
+    }
+
+    // 2. 单个添加逻辑
+    const rawTitle = body?.title;
     if (!rawTitle || typeof rawTitle !== 'string' || !rawTitle.trim()) {
       return errorResponse('任务标题不能为空', 400);
     }
@@ -163,7 +226,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     };
 
     if (lastId) {
-      const fetched = await env.DB.prepare('SELECT id, title, completed, created_at FROM tasks WHERE id = ?')
+      const fetched = await env.DB.prepare(
+        'SELECT id, title, completed, created_at FROM tasks WHERE id = ?'
+      )
         .bind(lastId)
         .first<DbTaskRow>();
       if (fetched) {
@@ -203,7 +268,7 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
   }
 
   try {
-    const body = await request.json().catch(() => ({})) as {
+    const body = (await request.json().catch(() => ({}))) as {
       id?: number | string;
       completed?: boolean | number;
       done?: boolean | number;
@@ -220,7 +285,9 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
     }
 
     // Check existing
-    const existing = await env.DB.prepare('SELECT id, title, completed, created_at FROM tasks WHERE id = ?')
+    const existing = await env.DB.prepare(
+      'SELECT id, title, completed, created_at FROM tasks WHERE id = ?'
+    )
       .bind(id)
       .first<DbTaskRow>();
 
@@ -238,15 +305,18 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
       newCompleted = existing.completed ? 0 : 1;
     }
 
-    const newTitle = (body.title && typeof body.title === 'string' && body.title.trim())
-      ? body.title.trim()
-      : existing.title;
+    const newTitle =
+      body.title && typeof body.title === 'string' && body.title.trim()
+        ? body.title.trim()
+        : existing.title;
 
     await env.DB.prepare('UPDATE tasks SET title = ?, completed = ? WHERE id = ?')
       .bind(newTitle, newCompleted, id)
       .run();
 
-    const updated = await env.DB.prepare('SELECT id, title, completed, created_at FROM tasks WHERE id = ?')
+    const updated = await env.DB.prepare(
+      'SELECT id, title, completed, created_at FROM tasks WHERE id = ?'
+    )
       .bind(id)
       .first<DbTaskRow>();
 
@@ -268,8 +338,9 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
 
 /**
  * DELETE /api/tasks
- * 删除任务
- * Query params: ?id=123 或 Body: { id: 123 }
+ * 删除任务 或 一键清空所有任务
+ * Query params: ?id=123 或 ?all=true
+ * 或 Body: { id: 123 } / { clearAll: true }
  */
 export const onRequestDelete: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
@@ -281,19 +352,30 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   try {
     const url = new URL(request.url);
     const queryId = url.searchParams.get('id');
+    const isAll = url.searchParams.get('all') === 'true' || url.searchParams.get('clearAll') === 'true';
+
+    const body = (await request.json().catch(() => ({}))) as {
+      id?: number | string;
+      clearAll?: boolean;
+    };
+
+    if (isAll || body?.clearAll) {
+      await env.DB.prepare('DELETE FROM tasks').run();
+      return jsonResponse({
+        success: true,
+        message: '已清空全部任务',
+      });
+    }
 
     let targetId: number | null = null;
     if (queryId) {
       targetId = Number(queryId);
-    } else {
-      const body = await request.json().catch(() => ({})) as { id?: number | string };
-      if (body.id !== undefined && body.id !== null) {
-        targetId = Number(body.id);
-      }
+    } else if (body.id !== undefined && body.id !== null) {
+      targetId = Number(body.id);
     }
 
     if (!targetId || isNaN(targetId)) {
-      return errorResponse('请在 URL 参数 (?id=...) 或请求体中提供有效的任务 id', 400);
+      return errorResponse('请在 URL 参数 (?id=...) 或请求体中提供有效的任务 id，或 ?all=true 清空全部', 400);
     }
 
     await env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(targetId).run();

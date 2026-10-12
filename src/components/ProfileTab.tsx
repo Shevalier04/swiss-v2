@@ -9,6 +9,9 @@ import {
   Info,
   FileUp,
   FolderArchive,
+  Database,
+  Cloud,
+  Sparkles,
 } from 'lucide-react';
 
 interface ProfileTabProps {
@@ -18,6 +21,7 @@ interface ProfileTabProps {
   pendingTaskCount: number;
   onLogout: () => void;
   onOpenAdmin: () => void;
+  onOpenDataManagement?: () => void;
   onSwitchTab: (tab: any) => void;
   onResetTemplate: () => void;
   onExportData: () => void;
@@ -33,6 +37,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   pendingTaskCount,
   onLogout,
   onOpenAdmin,
+  onOpenDataManagement,
   onSwitchTab,
   onResetTemplate,
   onExportData,
@@ -256,9 +261,30 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
       {/* Section: Data Management */}
       <div>
         <div className="text-[10px] font-bold tracking-[3px] text-[#8f8b80] mb-1 font-mono">
-          DATA · 数据导入与备份
+          DATA · 数据导入与云端管理
         </div>
         <div className="border-t-2 border-[#e9e4d8] divide-y divide-[#2a2d34] text-sm">
+          {onOpenDataManagement && (
+            <div
+              onClick={onOpenDataManagement}
+              className="flex items-center justify-between py-3.5 cursor-pointer hover:bg-white/[0.04] transition-colors bg-[#6b7cff]/10 px-3 rounded mb-1 border border-[#6b7cff]/30"
+            >
+              <div className="flex items-center gap-2.5">
+                <Database className="w-4 h-4 text-[#6b7cff]" />
+                <div>
+                  <div className="font-semibold text-[#e9e4d8] flex items-center gap-1.5">
+                    <span>云端数据管理与一键导入控制台</span>
+                    <span className="text-[10px] px-1.5 py-0.2 bg-[#6b7cff] text-white font-bold rounded">D1 云端</span>
+                  </div>
+                  <div className="text-xs text-[#8f8b80] mt-0.5">
+                    一键导入示例模板 · 批量 JSON/文本导入 · 全量备份导出 · 一键清空重置
+                  </div>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-[#6b7cff]" />
+            </div>
+          )}
+
           <div
             onClick={() => fileInputRef.current?.click()}
             className="flex items-center justify-between py-3.5 cursor-pointer hover:bg-white/[0.03] transition-colors"

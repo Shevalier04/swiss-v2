@@ -11,7 +11,18 @@ import {
   dueDays,
   isSundayEvening
 } from '../utils/time';
-import { ChevronLeft, ChevronRight, Edit3, Check, Calendar, Moon } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Edit3,
+  Check,
+  Calendar,
+  Moon,
+  RefreshCw,
+  Database,
+  Sparkles,
+  Cloud,
+} from 'lucide-react';
 
 interface TimetableTabProps {
   courses: Course[];
@@ -19,6 +30,9 @@ interface TimetableTabProps {
   onOpenCourse: (course: Course) => void;
   onQuickAdd: (day: number, slot: number, week: number) => void;
   onRefreshCourses?: () => void;
+  onOpenDataManagement?: () => void;
+  onImportPreset?: () => void;
+  loading?: boolean;
   sundayAutoAdvance?: boolean;
   initialWeek?: number;
   toast?: (msg: string) => void;
@@ -30,6 +44,9 @@ export const TimetableTab: React.FC<TimetableTabProps> = ({
   onOpenCourse,
   onQuickAdd,
   onRefreshCourses,
+  onOpenDataManagement,
+  onImportPreset,
+  loading = false,
   sundayAutoAdvance = true,
   initialWeek,
   toast,
@@ -226,6 +243,28 @@ export const TimetableTab: React.FC<TimetableTabProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {onRefreshCourses && (
+            <button
+              onClick={onRefreshCourses}
+              disabled={loading}
+              className="w-8 h-8 border-[1.5px] border-[#e9e4d8] hover:bg-[#e9e4d8] hover:text-[#1d1f24] flex items-center justify-center transition-colors cursor-pointer text-[#e9e4d8] disabled:opacity-50"
+              title="刷新云端课表"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#6b7cff]' : ''}`} />
+            </button>
+          )}
+
+          {onOpenDataManagement && (
+            <button
+              onClick={onOpenDataManagement}
+              className="px-2.5 py-1 text-xs font-bold border-[1.5px] border-[#6b7cff] text-[#6b7cff] hover:bg-[#6b7cff] hover:text-white transition-colors flex items-center gap-1 cursor-pointer"
+              title="数据管理与导入"
+            >
+              <Database className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">数据管理</span>
+            </button>
+          )}
+
           <button
             onClick={() => setIsEditMode(!isEditMode)}
             className={`px-3 py-1 text-xs font-bold tracking-[2px] border-[1.5px] transition-colors flex items-center gap-1.5 cursor-pointer ${
@@ -248,6 +287,40 @@ export const TimetableTab: React.FC<TimetableTabProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Cloud Empty State Banner */}
+      {courses.length === 0 && (
+        <div className="bg-[#1e222c] border-2 border-dashed border-[#6b7cff]/60 p-4 rounded text-center space-y-2.5">
+          <div className="flex items-center justify-center gap-2 text-[#e9e4d8] font-bold text-sm">
+            <Cloud className="w-4 h-4 text-[#6b7cff]" />
+            <span>云端 D1 数据库暂无课程数据</span>
+          </div>
+          <div className="text-xs text-[#8f8b80] max-w-md mx-auto">
+            当前云端课表为空。您可以一键导入全学期标准示例课表，或者通过数据管理控制台粘贴/导入您的课表。
+          </div>
+          <div className="flex items-center justify-center gap-2.5 pt-1">
+            {onImportPreset && (
+              <button
+                onClick={onImportPreset}
+                disabled={loading}
+                className="px-3.5 py-1.5 bg-[#6b7cff] hover:bg-[#5868e6] text-white text-xs font-bold rounded flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>一键导入 25 门示例课表</span>
+              </button>
+            )}
+            {onOpenDataManagement && (
+              <button
+                onClick={onOpenDataManagement}
+                className="px-3.5 py-1.5 bg-[#2a2d34] hover:bg-[#33363d] border border-[#e9e4d8]/40 text-[#e9e4d8] text-xs font-bold rounded flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>数据管理面板</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Edit Mode Tip */}
       {isEditMode && (

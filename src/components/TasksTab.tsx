@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { TaskItem } from '../types';
 import { pad2 } from '../utils/time';
-import { Trash2, Plus, Timer, Cloud, RefreshCw, Loader2, CheckCircle2, Circle } from 'lucide-react';
+import { Trash2, Plus, Timer, Cloud, RefreshCw, Loader2, CheckCircle2, Circle, Sparkles } from 'lucide-react';
 import { PomodoroTimer } from './PomodoroTimer';
+import { SAMPLE_TASKS } from '../utils/sampleData';
 
 interface TasksTabProps {
   toast: (msg: string) => void;
@@ -306,8 +307,38 @@ export const TasksTab: React.FC<TasksTabProps> = ({ toast }) => {
           <span className="text-xs font-mono tracking-wider">正在从云端 D1 数据库加载任务...</span>
         </div>
       ) : filteredList.length === 0 ? (
-        <div className="py-14 text-center text-[#63605a] font-editorial italic text-sm">
-          — 暂无待办任务 —
+        <div className="py-10 px-4 text-center bg-[#1e222c] border border-dashed border-[#6b7cff]/40 rounded space-y-2">
+          <div className="text-sm font-bold text-[#e9e4d8]">☁️ 暂无待办任务</div>
+          <div className="text-xs text-[#8f8b80]">
+            {filter !== 'all' ? '当前筛选下无匹配任务' : '云端数据库暂无任务。在上方输入待办快速记录，或一键导入示例任务'}
+          </div>
+          {filter === 'all' && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/tasks', {
+                      method: 'POST',
+                      headers: getAuthHeaders(),
+                      body: JSON.stringify({ tasks: SAMPLE_TASKS }),
+                    });
+                    if (res.ok) {
+                      toast('已成功导入 4 项示例任务');
+                      fetchTasks(true);
+                    } else {
+                      toast('导入失败');
+                    }
+                  } catch (e) {
+                    toast('网络错误');
+                  }
+                }}
+                className="px-3.5 py-1.5 bg-[#6b7cff] hover:bg-[#5868e6] text-white text-xs font-bold rounded cursor-pointer transition-colors"
+              >
+                一键导入 4 项示例任务
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="divide-y divide-[#2a2d34]">
