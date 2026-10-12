@@ -232,10 +232,7 @@ export const localDb = {
   },
 
   getTasks(username: string): TaskItem[] {
-    return getLocal(`cs_u_${username}_tasks`, [
-      { id: 1, title: '图书馆借阅《现代编译原理》', done: false },
-      { id: 2, title: '操场慢跑 3 公里', done: true }
-    ]);
+    return getLocal(`cs_u_${username}_tasks`, []);
   },
 
   addTask(username: string, title: string): TaskItem {

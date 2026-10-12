@@ -260,65 +260,45 @@ export const api = {
     }
   },
 
-  // Tasks
+  // Tasks - directly calls /api/tasks (Cloudflare D1 Backend)
   async getTasks(): Promise<TaskItem[]> {
-    const token = getStoredToken();
-    try {
-      const res = await request<{ tasks: TaskItem[] }>('/tasks');
-      return res.tasks;
-    } catch (e: any) {
-      return token ? localDb.getTasks(token) : [];
-    }
+    const res = await request<any>('/tasks');
+    const list = Array.isArray(res) ? res : (res.tasks || res.data || []);
+    return list.map((item: any) => ({
+      id: Number(item.id),
+      title: String(item.title || ''),
+      done: Boolean(item.completed !== undefined ? item.completed : item.done),
+    }));
   },
 
   async addTask(title: string): Promise<TaskItem> {
-    const token = getStoredToken();
-    try {
-      const res = await request<{ task: TaskItem }>('/tasks', {
-        method: 'POST',
-        body: JSON.stringify({ title }),
-      });
-      return res.task;
-    } catch (e: any) {
-      if (token) return localDb.addTask(token, title);
-      throw e;
-    }
+    const res = await request<any>('/tasks', {
+      method: 'POST',
+      body: JSON.stringify({ title }),
+    });
+    const item = res.task || res;
+    return {
+      id: Number(item.id),
+      title: String(item.title || title),
+      done: Boolean(item.completed !== undefined ? item.completed : item.done),
+    };
   },
 
   async toggleTask(id: number): Promise<TaskItem> {
-    const token = getStoredToken();
-    try {
-      // First attempt direct PUT /tasks (Cloudflare Pages Functions standard)
-      try {
-        const res = await request<{ task: TaskItem }>('/tasks', {
-          method: 'PUT',
-          body: JSON.stringify({ id }),
-        });
-        return res.task;
-      } catch {
-        // Fallback to /tasks/:id/toggle
-        const res = await request<{ task: TaskItem }>(`/tasks/${id}/toggle`, {
-          method: 'PUT',
-        });
-        return res.task;
-      }
-    } catch (e: any) {
-      if (token) return localDb.toggleTask(token, id);
-      throw e;
-    }
+    const res = await request<any>('/tasks', {
+      method: 'PUT',
+      body: JSON.stringify({ id }),
+    });
+    const item = res.task || res;
+    return {
+      id: Number(item.id || id),
+      title: String(item.title || ''),
+      done: Boolean(item.completed !== undefined ? item.completed : item.done),
+    };
   },
 
   async deleteTask(id: number): Promise<void> {
-    const token = getStoredToken();
-    try {
-      try {
-        await request(`/tasks?id=${id}`, { method: 'DELETE' });
-      } catch {
-        await request(`/tasks/${id}`, { method: 'DELETE' });
-      }
-    } catch (e: any) {
-      if (token) localDb.deleteTask(token, id);
-    }
+    await request(`/tasks?id=${id}`, { method: 'DELETE' });
   },
 
   // Notices

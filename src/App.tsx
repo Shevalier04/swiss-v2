@@ -525,10 +525,6 @@ export default function App() {
 
           {activeTab === 'tasks' && (
             <TasksTab
-              tasks={tasks}
-              onAdd={handleAddTask}
-              onToggle={handleToggleTask}
-              onDelete={handleDeleteTask}
               toast={showToast}
             />
           )}
