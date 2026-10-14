@@ -477,10 +477,10 @@ export default function App() {
 
   // PWA Badging API - Sync unread homework & tasks to desktop app icon
   useEffect(() => {
-    const totalBadge = pendingHwCount + pendingTaskCount;
-    if (typeof navigator !== 'undefined' && 'setAppBadge' in navigator) {
-      if (totalBadge > 0) {
-        (navigator as any).setAppBadge(totalBadge).catch(() => {});
+    const badgeCount = pendingHwCount + pendingTaskCount;
+    if (typeof navigator !== 'undefined' && (navigator as any).setAppBadge) {
+      if (badgeCount > 0) {
+        (navigator as any).setAppBadge(badgeCount).catch(() => {});
       } else {
         (navigator as any).clearAppBadge().catch(() => {});
       }

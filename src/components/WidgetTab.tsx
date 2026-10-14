@@ -29,6 +29,9 @@ import {
   Clock,
   Radio,
   X,
+  Smartphone,
+  LayoutGrid,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 interface WidgetTabProps {
@@ -60,6 +63,8 @@ export const WidgetTab: React.FC<WidgetTabProps> = ({
   const now = new Date();
   const isSundayEveNow = (now.getDay() === 0 && now.getHours() >= 18);
   const [dayOffset, setDayOffset] = useState(() => (isSundayEveNow ? 1 : 0));
+  const [renderMode, setRenderMode] = useState<'widget' | 'wallpaper'>('widget');
+  const [wallpaperType, setWallpaperType] = useState<'week' | 'today'>('week');
   const [rowCount, setRowCount] = useState<2 | 3 | 5>(2);
   const [accentColor, setAccentColor] = useState('#8b5cf6');
   const [copiedLink, setCopiedLink] = useState(false);
@@ -115,10 +120,6 @@ export const WidgetTab: React.FC<WidgetTabProps> = ({
   const pendingHomeworkList = useMemo(() => {
     return homework.filter(h => !h.done);
   }, [homework]);
-
-  const liveWidgetUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/api/widget/${username}/today.svg`
-    : `/api/widget/${username}/today.svg`;
 
   const webcalUrl = typeof window !== 'undefined'
     ? `webcal://${window.location.host}/api/calendar/${username}/schedule.ics`
@@ -206,10 +207,10 @@ export const WidgetTab: React.FC<WidgetTabProps> = ({
     }
 
     try {
-      if (typeof window !== 'undefined' && 'documentPictureInPicture' in window) {
+      if (typeof window !== 'undefined' && (window as any).documentPictureInPicture?.requestWindow) {
         const pipWindow = await (window as any).documentPictureInPicture.requestWindow({
-          width: 360,
-          height: 330,
+          width: 380,
+          height: 360,
         });
         pipWindowRef.current = pipWindow;
 
@@ -256,8 +257,8 @@ export const WidgetTab: React.FC<WidgetTabProps> = ({
         // Fallback popup window
         const popup = window.open(
           '',
-          'FloatingScheduleWidget',
-          'width=360,height=340,menubar=no,toolbar=no,location=no,status=no,resizable=yes'
+          '_blank',
+          'width=380,height=360,menubar=no,toolbar=no,location=no,status=no'
         );
         if (popup) {
           pipWindowRef.current = popup;
@@ -605,6 +606,371 @@ Script.complete();
     }
   };
 
+  // Canvas drawing for Phone Lockscreen Wallpaper (1080x1920, 9:16)
+  const drawWallpaperCanvas = (): HTMLCanvasElement => {
+    const W = 1080;
+    const H = 1920;
+    const cv = document.createElement('canvas');
+    cv.width = W;
+    cv.height = H;
+    const g = cv.getContext('2d');
+    if (!g) return cv;
+
+    // 1. Wallpaper Background (Deep charcoal / Swiss dark `#1d1f24`)
+    g.fillStyle = '#1d1f24';
+    g.fillRect(0, 0, W, H);
+
+    // Subtle dark gradient for refined editorial depth
+    const grad = g.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#1d1f24');
+    grad.addColorStop(0.32, '#181a1f');
+    grad.addColorStop(1, '#121317');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, W, H);
+
+    // 2. Top 32% (y = 0 to 614px) is deliberately reserved blank for iOS / Android Lockscreen clock & widgets
+    const topReservedH = Math.round(H * 0.32); // 614px
+
+    g.strokeStyle = '#2d3039';
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(50, topReservedH);
+    g.lineTo(W - 50, topReservedH);
+    g.stroke();
+
+    g.fillStyle = '#636056';
+    g.font = '14px monospace';
+    g.textAlign = 'center';
+    g.fillText(`— 掌上课表 · SWISS EDITORIAL LOCKSCREEN · 第 ${targetWeek} 周 —`, W / 2, topReservedH - 12);
+    g.textAlign = 'left';
+
+    if (wallpaperType === 'week') {
+      // MODE A: 本周 7 天紧凑课表网格
+      // Header
+      g.fillStyle = '#f0efe9';
+      g.font = 'bold 36px "Songti SC", Georgia, serif';
+      g.fillText(`第 ${targetWeek} 周 · 全周课表`, 50, topReservedH + 48);
+
+      g.fillStyle = '#8f8b80';
+      g.font = '18px monospace';
+      g.fillText(`SEMESTER SCHEDULE ｜ ${studentName} ｜ 08:20 - 20:05`, 50, topReservedH + 78);
+
+      // Accent color pill tag on right
+      g.fillStyle = accentColor;
+      g.beginPath();
+      g.roundRect(W - 190, topReservedH + 28, 140, 36, 18);
+      g.fill();
+      g.fillStyle = '#ffffff';
+      g.font = 'bold 15px sans-serif';
+      g.textAlign = 'center';
+      g.fillText('7 DAYS GRID', W - 120, topReservedH + 51);
+      g.textAlign = 'left';
+
+      // Grid Coordinates
+      const gridX = 50;
+      const gridY = topReservedH + 100;
+      const gridW = W - 100; // 980px
+      const gridH = H - gridY - 80; // ~1125px
+
+      const timeColW = 84;
+      const daysCount = 7;
+      const dayColGap = 6;
+      const dayColW = (gridW - timeColW - dayColGap * (daysCount - 1)) / daysCount;
+
+      // 5 Course Slots
+      const slotBlocks = [
+        { label: '01-02', time: '08:20', s: 1, e: 2 },
+        { label: '03-04', time: '10:15', s: 3, e: 4 },
+        { label: '05-06', time: '14:00', s: 5, e: 6 },
+        { label: '07-08', time: '15:55', s: 7, e: 8 },
+        { label: '09-10', time: '18:30', s: 9, e: 10 },
+      ];
+
+      const headerH = 46;
+      const slotGap = 8;
+      const slotH = (gridH - headerH - slotGap * (slotBlocks.length - 1)) / slotBlocks.length;
+
+      // Day Headers
+      WEEKDAYS.forEach((wName, dIdx) => {
+        const dx = gridX + timeColW + dIdx * (dayColW + dayColGap);
+        const isCurrentDay = dIdx === targetDayIdx;
+
+        if (isCurrentDay) {
+          g.fillStyle = accentColor;
+          g.beginPath();
+          g.roundRect(dx, gridY, dayColW, headerH - 8, 8);
+          g.fill();
+          g.fillStyle = '#ffffff';
+          g.font = 'bold 18px sans-serif';
+        } else {
+          g.fillStyle = '#262933';
+          g.beginPath();
+          g.roundRect(dx, gridY, dayColW, headerH - 8, 8);
+          g.fill();
+          g.fillStyle = '#a3a096';
+          g.font = '16px sans-serif';
+        }
+        g.textAlign = 'center';
+        g.fillText(wName, dx + dayColW / 2, gridY + 25);
+        g.textAlign = 'left';
+      });
+
+      // Slot Rows & Cells
+      slotBlocks.forEach((slot, sIdx) => {
+        const sy = gridY + headerH + sIdx * (slotH + slotGap);
+
+        // Time Label
+        g.fillStyle = '#8f8b80';
+        g.font = 'bold 15px monospace';
+        g.fillText(slot.label, gridX + 8, sy + slotH / 2 - 4);
+        g.font = '12px monospace';
+        g.fillStyle = '#5c5a52';
+        g.fillText(slot.time, gridX + 10, sy + slotH / 2 + 15);
+
+        // 7 Day Cells
+        for (let d = 0; d < 7; d++) {
+          const cx = gridX + timeColW + d * (dayColW + dayColGap);
+
+          // Find course matching day and slot
+          const c = courses.find(item =>
+            item.day === d &&
+            isCourseInWeek(targetWeek, item.weeks) &&
+            ((item.s <= slot.e && item.e >= slot.s) || item.s === slot.s)
+          );
+
+          if (c) {
+            g.fillStyle = '#232630';
+            g.beginPath();
+            g.roundRect(cx, sy, dayColW, slotH, 8);
+            g.fill();
+
+            // Accent bar on left of cell
+            g.fillStyle = c.color || accentColor;
+            g.beginPath();
+            g.roundRect(cx, sy, 4, slotH, 2);
+            g.fill();
+
+            // Course Name
+            g.fillStyle = '#f5f4ef';
+            g.font = 'bold 15px "Songti SC", Georgia, serif';
+            const nameChars = Array.from(c.name || '课程');
+            let l1 = '';
+            let l2 = '';
+            for (const ch of nameChars) {
+              if (g.measureText(l1 + ch).width < dayColW - 14) {
+                l1 += ch;
+              } else if (l2.length < 8) {
+                l2 += ch;
+              }
+            }
+            g.fillText(l1, cx + 8, sy + 22);
+            if (l2) g.fillText(l2, cx + 8, sy + 40);
+
+            // Classroom
+            if (c.room) {
+              g.fillStyle = '#a6a398';
+              g.font = '12px sans-serif';
+              const rText = c.room.length > 7 ? c.room.slice(0, 6) + '…' : c.room;
+              g.fillText(rText, cx + 8, sy + slotH - 12);
+            }
+          } else {
+            // Empty Cell
+            g.fillStyle = '#1b1d24';
+            g.beginPath();
+            g.roundRect(cx, sy, dayColW, slotH, 8);
+            g.fill();
+            g.strokeStyle = '#272933';
+            g.lineWidth = 1;
+            g.stroke();
+          }
+        }
+      });
+
+      // Bottom watermark footer
+      g.fillStyle = '#555866';
+      g.font = '15px monospace';
+      g.textAlign = 'center';
+      g.fillText('SWISS EDITORIAL · 抬手亮屏即览全周日程', W / 2, H - 35);
+      g.textAlign = 'left';
+
+    } else {
+      // MODE B: 今日课程 + 待交作业清单
+      // Header
+      const dateHeader = isToday
+        ? `今天 · ${WEEKDAYS[targetDayIdx]} · 第${targetWeek}周`
+        : `${WEEKDAYS[targetDayIdx]} · ${targetDate.getMonth() + 1}月${targetDate.getDate()}日 · 第${targetWeek}周`;
+
+      g.fillStyle = '#ffffff';
+      g.font = 'bold 42px "Songti SC", Georgia, serif';
+      g.fillText(dateHeader, 50, topReservedH + 48);
+
+      g.fillStyle = '#8f8b80';
+      g.font = '20px monospace';
+      g.fillText(`TODAY'S SCHEDULE ｜ 学员：${studentName} ｜ 今日课程：${dayCourses.length} 门`, 50, topReservedH + 82);
+
+      // Section 1: 今日课程
+      let curY = topReservedH + 115;
+      g.fillStyle = accentColor;
+      g.font = 'bold 20px monospace';
+      g.fillText('// 01 · 今日课程安排 SCHEDULE', 50, curY);
+      curY += 16;
+
+      if (dayCourses.length === 0) {
+        g.fillStyle = '#232630';
+        g.beginPath();
+        g.roundRect(50, curY, W - 100, 110, 16);
+        g.fill();
+
+        g.fillStyle = '#8f8b80';
+        g.font = 'italic 22px sans-serif';
+        g.textAlign = 'center';
+        g.fillText('今天没有排课，享受充实惬意的自习或休息时间 ☕', W / 2, curY + 62);
+        g.textAlign = 'left';
+        curY += 135;
+      } else {
+        const renderCourses = dayCourses.slice(0, 5);
+        renderCourses.forEach((c) => {
+          const cardH = 96;
+          g.fillStyle = '#232630';
+          g.beginPath();
+          g.roundRect(50, curY, W - 100, cardH, 16);
+          g.fill();
+
+          // Left accent stripe
+          g.fillStyle = c.color || accentColor;
+          g.beginPath();
+          g.roundRect(50, curY, 8, cardH, 4);
+          g.fill();
+
+          // Time range badge
+          g.fillStyle = '#f0efe9';
+          g.font = 'bold 24px monospace';
+          g.fillText(`${SLOTS[c.s].s} - ${SLOTS[c.e].e}`, 80, curY + 40);
+
+          // Course Name
+          g.fillStyle = '#ffffff';
+          g.font = 'bold 28px "Songti SC", Georgia, serif';
+          const nameLimit = c.name.length > 14 ? c.name.slice(0, 13) + '…' : c.name;
+          g.fillText(nameLimit, 80, curY + 76);
+
+          // Meta info (Right side)
+          g.textAlign = 'right';
+          g.fillStyle = accentColor;
+          g.font = 'bold 18px monospace';
+          g.fillText(`第${c.s}-${c.e}节`, W - 80, curY + 38);
+
+          g.fillStyle = '#9e9b92';
+          g.font = '20px sans-serif';
+          const meta = [c.room, c.teacher].filter(Boolean).join(' ｜ ');
+          g.fillText(meta || '待定', W - 80, curY + 74);
+          g.textAlign = 'left';
+
+          curY += cardH + 14;
+        });
+        curY += 10;
+      }
+
+      // Section 2: 待交作业与任务清单
+      curY += 10;
+      g.fillStyle = '#ff6b57';
+      g.font = 'bold 20px monospace';
+      g.fillText(`// 02 · 待交作业清单 PENDING HOMEWORK (${pendingHomeworkList.length})`, 50, curY);
+      curY += 16;
+
+      if (pendingHomeworkList.length === 0) {
+        g.fillStyle = '#1e2422';
+        g.beginPath();
+        g.roundRect(50, curY, W - 100, 90, 16);
+        g.fill();
+        g.strokeStyle = '#274032';
+        g.lineWidth = 1.5;
+        g.stroke();
+
+        g.fillStyle = '#4ade80';
+        g.font = 'bold 22px sans-serif';
+        g.textAlign = 'center';
+        g.fillText('所有课程作业已全部完成，无待办事项 ✓', W / 2, curY + 52);
+        g.textAlign = 'left';
+      } else {
+        const renderHw = pendingHomeworkList.slice(0, 4);
+        renderHw.forEach((h) => {
+          const hwH = 80;
+          g.fillStyle = '#22242c';
+          g.beginPath();
+          g.roundRect(50, curY, W - 100, hwH, 14);
+          g.fill();
+          g.strokeStyle = '#382f32';
+          g.lineWidth = 1;
+          g.stroke();
+
+          // Left warning dot
+          g.fillStyle = '#ff6b57';
+          g.beginPath();
+          g.arc(78, curY + hwH / 2, 6, 0, Math.PI * 2);
+          g.fill();
+
+          // Course tag & Title
+          g.fillStyle = accentColor;
+          g.font = 'bold 22px sans-serif';
+          const courseTag = `[${h.course || '课程'}] `;
+          g.fillText(courseTag, 100, curY + 48);
+
+          const tagW = g.measureText(courseTag).width;
+          g.fillStyle = '#e9e4d8';
+          g.font = 'bold 22px sans-serif';
+          const titleMax = h.title.length > 15 ? h.title.slice(0, 14) + '…' : h.title;
+          g.fillText(titleMax, 100 + tagW, curY + 48);
+
+          // Deadline
+          if (h.due) {
+            g.textAlign = 'right';
+            g.fillStyle = '#ff8c7a';
+            g.font = '18px monospace';
+            g.fillText(`截止 @${h.due}`, W - 80, curY + 48);
+            g.textAlign = 'left';
+          }
+
+          curY += hwH + 12;
+        });
+      }
+
+      // Bottom watermark footer
+      g.fillStyle = '#555866';
+      g.font = '15px monospace';
+      g.textAlign = 'center';
+      g.fillText('SWISS TIMETABLE LOCKSCREEN · 1080×1920 高清竖屏壁纸', W / 2, H - 35);
+      g.textAlign = 'left';
+    }
+
+    return cv;
+  };
+
+  const handleDownloadWallpaper = () => {
+    const cv = drawWallpaperCanvas();
+    const a = document.createElement('a');
+    a.download = `课表锁屏壁纸-${studentName}-${wallpaperType === 'week' ? `第${targetWeek}周` : `今日安排-${WEEKDAYS[targetDayIdx]}`}.png`;
+    a.href = cv.toDataURL('image/png');
+    a.click();
+    toast('已保存 1080×1920 高清锁屏壁纸！到相册设为壁纸即可');
+  };
+
+  const handleCopyWallpaper = () => {
+    const cv = drawWallpaperCanvas();
+    try {
+      cv.toBlob(blob => {
+        if (blob && navigator?.clipboard?.write) {
+          navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+            .then(() => toast('锁屏壁纸已复制到剪贴板！'))
+            .catch(() => handleDownloadWallpaper());
+        } else {
+          handleDownloadWallpaper();
+        }
+      });
+    } catch (e) {
+      handleDownloadWallpaper();
+    }
+  };
+
   return (
     <div className="space-y-4 pb-6">
       {/* Title & Day switcher */}
@@ -773,13 +1139,35 @@ Script.complete();
         )}
       </div>
 
-      {/* 2. Document Picture-in-Picture & Widget Card Stage */}
+      {/* 2. Generation Mode Selector: Widget Card vs Phone Lockscreen Wallpaper */}
+      <div className="flex border-2 border-[#e9e4d8] text-xs font-bold divide-x-2 divide-[#e9e4d8] select-none rounded-xs overflow-hidden">
+        <button
+          onClick={() => setRenderMode('widget')}
+          className={`flex-1 py-2.5 flex items-center justify-center gap-2 cursor-pointer transition-colors ${
+            renderMode === 'widget' ? 'bg-[#e9e4d8] text-[#1d1f24]' : 'text-[#e9e4d8] hover:bg-white/10'
+          }`}
+        >
+          <LayoutGrid className="w-4 h-4" />
+          <span>桌面小卡片 (Widget)</span>
+        </button>
+        <button
+          onClick={() => setRenderMode('wallpaper')}
+          className={`flex-1 py-2.5 flex items-center justify-center gap-2 cursor-pointer transition-colors ${
+            renderMode === 'wallpaper' ? 'bg-[#e9e4d8] text-[#1d1f24]' : 'text-[#e9e4d8] hover:bg-white/10'
+          }`}
+        >
+          <Smartphone className="w-4 h-4" />
+          <span>手机锁屏壁纸 (1080×1920)</span>
+        </button>
+      </div>
+
+      {/* 3. Stage Preview Area */}
       <div className="p-4 sm:p-5 bg-gradient-to-br from-[#1a1c26] to-[#121317] border-2 border-[#33363d] rounded-xl flex flex-col items-center gap-3">
         {/* Stage Header with PiP button */}
-        <div className="w-full max-w-[380px] flex items-center justify-between pb-1">
+        <div className="w-full max-w-[380px] flex items-center justify-between pb-1 flex-wrap gap-2">
           <span className="text-xs font-mono text-[#8f8b80] font-bold tracking-wider flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5 text-[#6b7cff]" />
-            <span>PREVIEW · 今日挂件预览</span>
+            <span>{renderMode === 'widget' ? 'PREVIEW · 今日挂件预览' : 'PREVIEW · 9:16 锁屏壁纸预览'}</span>
           </span>
 
           {/* Desktop Floating PiP Button */}
@@ -790,86 +1178,233 @@ Script.complete();
                 ? 'bg-[#6b7cff] text-white border-[#6b7cff] animate-pulse'
                 : 'bg-[#232630] text-[#6b7cff] border-[#6b7cff]/40 hover:bg-[#6b7cff]/20 hover:text-white'
             }`}
-            title="利用 Document Picture-in-Picture 将今日课表置顶悬浮在电脑屏幕最上方"
+            title="优先调用 Document Picture-in-Picture 将今日课表置顶悬浮在电脑屏幕最上方"
           >
             <PictureInPicture2 className="w-3.5 h-3.5" />
-            <span>{pipContainer ? '置顶悬浮中 (点击关闭)' : '置顶悬浮小窗'}</span>
+            <span>{pipContainer ? '电脑端悬浮窗置顶中 (点击关闭)' : '电脑端桌面悬浮窗'}</span>
           </button>
         </div>
 
-        {/* The Swiss Editorial Visual Card */}
-        <div className="w-full max-w-[380px] bg-[#202226] rounded-[24px] p-5 shadow-2xl border border-white/5 space-y-3.5 text-[#e9e4d8]">
-          <div className="flex items-center justify-between pb-1">
-            <div className="flex items-center gap-2 text-base font-bold font-editorial">
-              <Calendar className="w-4 h-4 text-[#6b7cff]" />
-              <span>
-                {isToday
-                  ? `今天 / ${WEEKDAYS[targetDayIdx]}`
-                  : `${WEEKDAYS[targetDayIdx]} / ${targetDate.getMonth() + 1}月${targetDate.getDate()}日`}
-              </span>
-            </div>
-            <div className="text-sm font-semibold text-[#8f8b80]">第{targetWeek}周</div>
-          </div>
-
-          <div className="space-y-2.5">
-            {displayList.map(c => {
-              const sMin = toMinutes(SLOTS[c.s].s);
-              const isSoon = isToday && sMin - currentMinutes > 0 && sMin - currentMinutes <= leadMinutes;
-
-              return (
-                <div
-                  key={c.id}
-                  onClick={() => onOpenCourse(c)}
-                  className="flex items-center gap-3 bg-[#2b2d31] rounded-2xl p-3.5 transition-colors hover:bg-[#33353a] cursor-pointer"
-                >
-                  <div className="flex flex-col justify-center min-w-[50px] font-mono leading-tight">
-                    <span className="text-sm font-bold text-[#f2f1ec]">{SLOTS[c.s].s}</span>
-                    <span className="text-xs text-[#8e8d87]">{SLOTS[c.e].e}</span>
-                  </div>
-
-                  <div
-                    className="w-1.5 h-9 rounded-full shrink-0"
-                    style={{ backgroundColor: c.color || accentColor }}
-                  />
-
-                  <div className="flex-1 min-w-0">
-                    <div className="font-editorial font-bold text-base text-[#f7f6f1] truncate">
-                      {c.name}
-                    </div>
-                    <div
-                      className={`text-xs truncate ${
-                        isSoon ? 'text-[#ff9a86] font-semibold' : 'text-[#a3a19b]'
-                      }`}
-                    >
-                      第{c.s}-{c.e}节{c.room ? ` ｜ ${c.room}` : ''}{c.teacher ? ` ｜ ${c.teacher}` : ''}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            {Array.from({ length: Math.max(0, rowCount - displayList.length) }).map((_, idx) => (
-              <div
-                key={idx}
-                className="bg-[#2b2d31]/50 border border-dashed border-[#3a3d44] rounded-2xl h-[62px] flex items-center justify-center text-xs text-[#63605a]"
-              >
-                {displayList.length === 0 && idx === 0 ? '该日无更多课程' : '— 空闲 —'}
+        {/* Content Preview Stage based on renderMode */}
+        {renderMode === 'widget' ? (
+          /* Classic Swiss Editorial Visual Card */
+          <div className="w-full max-w-[380px] bg-[#202226] rounded-[24px] p-5 shadow-2xl border border-white/5 space-y-3.5 text-[#e9e4d8]">
+            <div className="flex items-center justify-between pb-1">
+              <div className="flex items-center gap-2 text-base font-bold font-editorial">
+                <Calendar className="w-4 h-4 text-[#6b7cff]" />
+                <span>
+                  {isToday
+                    ? `今天 / ${WEEKDAYS[targetDayIdx]}`
+                    : `${WEEKDAYS[targetDayIdx]} / ${targetDate.getMonth() + 1}月${targetDate.getDate()}日`}
+                </span>
               </div>
-            ))}
-          </div>
+              <div className="text-sm font-semibold text-[#8f8b80]">第{targetWeek}周</div>
+            </div>
 
-          {/* Pending Homework count footer inside widget */}
-          <div className="pt-2 border-t border-[#2e313a] flex items-center justify-between text-xs text-[#8f8b80]">
-            <span className="font-mono text-[10px]">SWISS TIMETABLE</span>
-            {pendingHomeworkList.length > 0 ? (
-              <span className="text-[#ff6b57] font-semibold text-[11px]">
-                {pendingHomeworkList.length} 项作业待完成
-              </span>
-            ) : (
-              <span className="text-emerald-400 text-[11px]">作业全部完成 ✓</span>
-            )}
+            <div className="space-y-2.5">
+              {displayList.map(c => {
+                const sMin = toMinutes(SLOTS[c.s].s);
+                const isSoon = isToday && sMin - currentMinutes > 0 && sMin - currentMinutes <= leadMinutes;
+
+                return (
+                  <div
+                    key={c.id}
+                    onClick={() => onOpenCourse(c)}
+                    className="flex items-center gap-3 bg-[#2b2d31] rounded-2xl p-3.5 transition-colors hover:bg-[#33353a] cursor-pointer"
+                  >
+                    <div className="flex flex-col justify-center min-w-[50px] font-mono leading-tight">
+                      <span className="text-sm font-bold text-[#f2f1ec]">{SLOTS[c.s].s}</span>
+                      <span className="text-xs text-[#8e8d87]">{SLOTS[c.e].e}</span>
+                    </div>
+
+                    <div
+                      className="w-1.5 h-9 rounded-full shrink-0"
+                      style={{ backgroundColor: c.color || accentColor }}
+                    />
+
+                    <div className="flex-1 min-w-0">
+                      <div className="font-editorial font-bold text-base text-[#f7f6f1] truncate">
+                        {c.name}
+                      </div>
+                      <div
+                        className={`text-xs truncate ${
+                          isSoon ? 'text-[#ff9a86] font-semibold' : 'text-[#a3a19b]'
+                        }`}
+                      >
+                        第{c.s}-{c.e}节{c.room ? ` ｜ ${c.room}` : ''}{c.teacher ? ` ｜ ${c.teacher}` : ''}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {Array.from({ length: Math.max(0, rowCount - displayList.length) }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="bg-[#2b2d31]/50 border border-dashed border-[#3a3d44] rounded-2xl h-[62px] flex items-center justify-center text-xs text-[#63605a]"
+                >
+                  {displayList.length === 0 && idx === 0 ? '该日无更多课程' : '— 空闲 —'}
+                </div>
+              ))}
+            </div>
+
+            {/* Pending Homework count footer inside widget */}
+            <div className="pt-2 border-t border-[#2e313a] flex items-center justify-between text-xs text-[#8f8b80]">
+              <span className="font-mono text-[10px]">SWISS TIMETABLE</span>
+              {pendingHomeworkList.length > 0 ? (
+                <span className="text-[#ff6b57] font-semibold text-[11px]">
+                  {pendingHomeworkList.length} 项作业待完成
+                </span>
+              ) : (
+                <span className="text-emerald-400 text-[11px]">作业全部完成 ✓</span>
+              )}
+            </div>
           </div>
-        </div>
+        ) : (
+          /* Phone Lockscreen Wallpaper 9:16 Mockup Stage */
+          <div className="w-full max-w-[320px] space-y-3">
+            {/* Wallpaper Content Sub-Switcher */}
+            <div className="flex border border-[#3e4252] rounded-lg p-1 bg-[#14161d] text-xs font-semibold gap-1 select-none">
+              <button
+                onClick={() => setWallpaperType('week')}
+                className={`flex-1 py-1.5 px-2 rounded text-center transition-colors cursor-pointer ${
+                  wallpaperType === 'week'
+                    ? 'bg-[#6b7cff] text-white shadow-xs'
+                    : 'text-[#8f8b80] hover:text-[#e9e4d8]'
+                }`}
+              >
+                📅 本周 7 天课表网格
+              </button>
+              <button
+                onClick={() => setWallpaperType('today')}
+                className={`flex-1 py-1.5 px-2 rounded text-center transition-colors cursor-pointer ${
+                  wallpaperType === 'today'
+                    ? 'bg-[#6b7cff] text-white shadow-xs'
+                    : 'text-[#8f8b80] hover:text-[#e9e4d8]'
+                }`}
+              >
+                📝 今日课程 + 待交作业
+              </button>
+            </div>
+
+            {/* Smartphone 9:16 Mockup Frame */}
+            <div className="w-full aspect-[9/16] bg-[#1d1f24] rounded-[36px] border-[5px] border-[#383b48] p-3 shadow-2xl relative flex flex-col justify-between text-[#e9e4d8] overflow-hidden select-none">
+              {/* Top 32% Reserved Clock & Widgets Area */}
+              <div className="h-[32%] flex flex-col items-center justify-center border-b border-dashed border-[#3e4252] bg-white/2 rounded-2xl p-2 relative">
+                <div className="w-16 h-3.5 bg-black/80 rounded-full mb-1.5 flex items-center justify-center">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#444] mr-2" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#222]" />
+                </div>
+                <div className="text-2xl sm:text-3xl font-extrabold tracking-tight font-sans text-white">
+                  09:41
+                </div>
+                <div className="text-[10px] text-[#a39f93] font-medium">
+                  {targetDate.getMonth() + 1}月{targetDate.getDate()}日 {WEEKDAYS[targetDayIdx]}
+                </div>
+                <div className="text-[8.5px] font-mono text-[#8f8b80] mt-1 bg-black/40 px-2 py-0.5 rounded-full border border-white/10">
+                  👆 锁屏时钟/日期保留区 (32% 留白)
+                </div>
+              </div>
+
+              {/* Bottom 68% Wallpaper Content Preview */}
+              <div className="h-[67%] flex flex-col justify-between pt-2">
+                {wallpaperType === 'week' ? (
+                  <div className="flex-1 flex flex-col justify-between text-[10px]">
+                    <div className="flex items-center justify-between border-b border-[#33363f] pb-1">
+                      <span className="font-editorial font-bold text-xs text-[#f0efe9]">第 {targetWeek} 周 · 全周课表</span>
+                      <span className="text-[8px] px-1.5 py-0.2 rounded font-bold text-white" style={{ backgroundColor: accentColor }}>
+                        7 DAYS
+                      </span>
+                    </div>
+
+                    {/* Mini 7-day grid */}
+                    <div className="grid grid-cols-7 gap-1 py-1.5 flex-1">
+                      {WEEKDAYS.map((w, idx) => {
+                        const dayCoursesList = courses.filter(c => c.day === idx && isCourseInWeek(targetWeek, c.weeks));
+                        const isCur = idx === targetDayIdx;
+                        return (
+                          <div
+                            key={idx}
+                            className={`rounded p-1 flex flex-col items-center justify-between text-center border ${
+                              isCur
+                                ? 'bg-[#292c36] border-[#6b7cff]'
+                                : 'bg-[#21232a] border-[#2d3039]'
+                            }`}
+                          >
+                            <span className={`text-[8.5px] font-bold ${isCur ? 'text-[#6b7cff]' : 'text-[#8f8b80]'}`}>
+                              {w[1]}
+                            </span>
+                            <div className="flex flex-col gap-0.5 my-auto">
+                              {dayCoursesList.slice(0, 3).map(c => (
+                                <div
+                                  key={c.id}
+                                  className="w-1.5 h-1.5 rounded-full mx-auto"
+                                  style={{ backgroundColor: c.color || accentColor }}
+                                  title={c.name}
+                                />
+                              ))}
+                              {dayCoursesList.length === 0 && (
+                                <span className="text-[7.5px] text-[#555]">—</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="text-[8.5px] font-mono text-[#63605a] text-center pt-1 border-t border-[#2d3039]">
+                      SWISS EDITORIAL · 1080×1920 高清竖屏壁纸
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col justify-between text-[10px]">
+                    <div>
+                      <div className="font-editorial font-bold text-xs text-white">
+                        {isToday ? '今天' : WEEKDAYS[targetDayIdx]} · 第{targetWeek}周
+                      </div>
+                      <div className="text-[8px] font-mono text-[#8f8b80]">
+                        今日课程 ({dayCourses.length}) ｜ 待交作业 ({pendingHomeworkList.length})
+                      </div>
+                    </div>
+
+                    {/* Today Mini Courses List */}
+                    <div className="space-y-1.5 my-auto">
+                      {dayCourses.slice(0, 3).map(c => (
+                        <div key={c.id} className="bg-[#242730] p-1.5 rounded border border-[#33363f] flex items-center gap-2">
+                          <div className="w-1 h-5 rounded-full shrink-0" style={{ backgroundColor: c.color || accentColor }} />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-bold text-[10px] text-white truncate">{c.name}</div>
+                            <div className="text-[8px] text-[#8f8b80] truncate">{SLOTS[c.s].s} @{c.room || '待定'}</div>
+                          </div>
+                        </div>
+                      ))}
+                      {dayCourses.length === 0 && (
+                        <div className="text-center py-2 text-[10px] italic text-[#8f8b80]">
+                          今天没有课，好好休息 ☕
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Pending Homework */}
+                    <div className="pt-1 border-t border-[#2d3039] flex items-center justify-between text-[8.5px]">
+                      <span className="text-[#8f8b80] font-mono">待交作业</span>
+                      {pendingHomeworkList.length > 0 ? (
+                        <span className="text-[#ff6b57] font-bold">{pendingHomeworkList.length} 项待交</span>
+                      ) : (
+                        <span className="text-emerald-400">全部完成 ✓</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Instruction Banner */}
+            <div className="bg-[#14161d] p-2.5 rounded border border-[#2a2d36] text-[11px] text-[#a8a399] leading-relaxed">
+              💡 <strong>使用指南</strong>：保存后打开手机相册 ➡️ 设为锁定屏幕壁纸。顶部已预留 32% 空白，避开系统时间与锁屏小组件，抬手亮屏即可查课！
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Portal into PiP Floating Window */}
@@ -883,7 +1418,7 @@ Script.complete();
         pipContainer
       )}
 
-      {/* 3. iOS Scriptable 原生小组件脚本生成区 */}
+      {/* 4. iOS Scriptable 原生小组件脚本生成区 */}
       <div className="border border-[#383b48] bg-[#1d2028] p-4 rounded-lg space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
@@ -920,25 +1455,27 @@ Script.complete();
         </div>
       </div>
 
-      {/* Row Count Buttons */}
-      <div>
-        <div className="text-[10px] font-bold tracking-[3px] text-[#8f8b80] mb-2 font-mono">
-          SIZE · 尺寸容量
+      {/* Row Count Buttons (Only for Widget mode) */}
+      {renderMode === 'widget' && (
+        <div>
+          <div className="text-[10px] font-bold tracking-[3px] text-[#8f8b80] mb-2 font-mono">
+            SIZE · 尺寸容量
+          </div>
+          <div className="flex border border-[#e9e4d8] text-xs font-bold divide-x divide-[#e9e4d8]">
+            {([2, 3, 5] as const).map(n => (
+              <button
+                key={n}
+                onClick={() => setRowCount(n)}
+                className={`flex-1 py-2 text-center transition-colors cursor-pointer ${
+                  rowCount === n ? 'bg-[#e9e4d8] text-[#1d1f24]' : 'text-[#e9e4d8] hover:bg-white/10'
+                }`}
+              >
+                {n === 2 ? '小 · 2 条' : n === 3 ? '中 · 3 条' : '大 · 5 条'}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex border border-[#e9e4d8] text-xs font-bold divide-x divide-[#e9e4d8]">
-          {([2, 3, 5] as const).map(n => (
-            <button
-              key={n}
-              onClick={() => setRowCount(n)}
-              className={`flex-1 py-2 text-center transition-colors cursor-pointer ${
-                rowCount === n ? 'bg-[#e9e4d8] text-[#1d1f24]' : 'text-[#e9e4d8] hover:bg-white/10'
-              }`}
-            >
-              {n === 2 ? '小 · 2 条' : n === 3 ? '中 · 3 条' : '大 · 5 条'}
-            </button>
-          ))}
-        </div>
-      </div>
+      )}
 
       {/* Accent Colors */}
       <div>
@@ -959,22 +1496,43 @@ Script.complete();
         </div>
       </div>
 
-      {/* Export actions */}
+      {/* Export actions based on renderMode */}
       <div className="grid grid-cols-2 gap-3 pt-2">
-        <button
-          onClick={handleCopy}
-          className="py-3 bg-[#e9e4d8] hover:bg-white text-[#1d1f24] font-bold text-xs tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-        >
-          <Copy className="w-3.5 h-3.5" />
-          复制小组件图片
-        </button>
-        <button
-          onClick={handleDownload}
-          className="py-3 border-2 border-[#e9e4d8] text-[#e9e4d8] hover:bg-[#e9e4d8] hover:text-[#1d1f24] font-bold text-xs tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-        >
-          <Download className="w-3.5 h-3.5" />
-          导出高清 PNG
-        </button>
+        {renderMode === 'widget' ? (
+          <>
+            <button
+              onClick={handleCopy}
+              className="py-3 bg-[#e9e4d8] hover:bg-white text-[#1d1f24] font-bold text-xs tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              复制小组件图片
+            </button>
+            <button
+              onClick={handleDownload}
+              className="py-3 border-2 border-[#e9e4d8] text-[#e9e4d8] hover:bg-[#e9e4d8] hover:text-[#1d1f24] font-bold text-xs tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              导出高清 PNG
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={handleCopyWallpaper}
+              className="py-3 bg-[#e9e4d8] hover:bg-white text-[#1d1f24] font-bold text-xs tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              复制壁纸图片
+            </button>
+            <button
+              onClick={handleDownloadWallpaper}
+              className="py-3 bg-[#6b7cff] hover:bg-[#5868e6] text-white font-bold text-xs tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-md"
+            >
+              <Download className="w-3.5 h-3.5" />
+              保存 PNG 锁屏壁纸 (1080×1920)
+            </button>
+          </>
+        )}
       </div>
 
       {/* Scriptable Modal */}
