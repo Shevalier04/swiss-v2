@@ -123,32 +123,121 @@ apiRouter.get('/auth/me', (req: Request, res: Response) => {
   });
 });
 
-// Courses endpoints
+// Helper to normalize course fields (compat with D1 and local server)
+function normalizeCourseInput(item: any, defaultId?: number) {
+  const room = item.room || item.classroom || '';
+  const day = Number(item.day !== undefined ? item.day : (item.weekday !== undefined ? item.weekday : 0));
+  const s = Number(item.s !== undefined ? item.s : (item.start_slot !== undefined ? item.start_slot : 1));
+  const e = Number(item.e !== undefined ? item.e : (item.end_slot !== undefined ? item.end_slot : s));
+  return {
+    id: Number(item.id) || defaultId || Date.now() + Math.floor(Math.random() * 100000),
+    name: String(item.name || '').trim(),
+    teacher: item.teacher ? String(item.teacher).trim() : '',
+    room,
+    day,
+    s,
+    e,
+    weeks: item.weeks || '1-18周',
+    color: item.color || PALETTE[0],
+  };
+}
+
+// Helper to normalize assignment fields
+function normalizeAssignmentInput(item: any) {
+  const course = item.course || item.course_name || '常规课程';
+  const title = item.title ? String(item.title).trim() : '';
+  const due = item.due || item.deadline || '';
+  const done = Boolean(item.completed !== undefined ? item.completed : item.done);
+  return {
+    id: item.id ? Number(item.id) : undefined,
+    course,
+    title,
+    due,
+    done,
+  };
+}
+
+// ==========================================
+// Courses endpoints (D1 & local compatible)
+// ==========================================
 apiRouter.get('/courses', (req: Request, res: Response) => {
   const username = getCurrentUser(req);
   if (!username) return res.status(401).json({ error: '未登录' });
   const courses = dbStore.getCourses(username);
-  return res.json({ courses });
+  return res.json({ success: true, courses });
 });
 
 apiRouter.post('/courses', (req: Request, res: Response) => {
   const username = getCurrentUser(req);
   if (!username) return res.status(401).json({ error: '未登录' });
-  const { name, teacher, room, day, s, e, weeks, color } = req.body;
-  if (!name) return res.status(400).json({ error: '课程名称不能为空' });
+
+  // 1. Batch support: { courses: [...], replace?: boolean } or array
+  const rawList = Array.isArray(req.body)
+    ? req.body
+    : (Array.isArray(req.body?.courses) ? req.body.courses : null);
+
+  if (rawList) {
+    const replace = req.body?.replace === true || Array.isArray(req.body);
+    const normalizedList = rawList.map((c: any) => normalizeCourseInput(c));
+
+    if (replace) {
+      dbStore.saveCourses(username, normalizedList);
+    } else {
+      const existing = dbStore.getCourses(username);
+      const combined = [...existing];
+      normalizedList.forEach((c: any) => {
+        combined.push({
+          id: c.id || Date.now() + Math.floor(Math.random() * 1000),
+          ...c,
+        });
+      });
+      dbStore.saveCourses(username, combined);
+    }
+    const result = dbStore.getCourses(username);
+    return res.json({ success: true, count: result.length, courses: result });
+  }
+
+  // 2. Single course insertion
+  const norm = normalizeCourseInput(req.body);
+  if (!norm.name) return res.status(400).json({ error: '课程名称不能为空' });
 
   const created = dbStore.addCourse(username, {
-    name,
-    teacher: teacher || '',
-    room: room || '',
-    day: Number(day),
-    s: Number(s),
-    e: Number(e),
-    weeks: weeks || '',
-    color: color || PALETTE[0]
+    name: norm.name,
+    teacher: norm.teacher,
+    room: norm.room,
+    day: norm.day,
+    s: norm.s,
+    e: norm.e,
+    weeks: norm.weeks,
+    color: norm.color,
   });
 
-  return res.json({ course: created });
+  return res.json({ success: true, course: created });
+});
+
+apiRouter.put('/courses', (req: Request, res: Response) => {
+  const username = getCurrentUser(req);
+  if (!username) return res.status(401).json({ error: '未登录' });
+  const id = Number(req.body?.id);
+  if (!id) return res.status(400).json({ error: '请提供课程 id' });
+
+  try {
+    const norm = normalizeCourseInput(req.body);
+    const patchData: any = {};
+    if (req.body.name !== undefined) patchData.name = norm.name;
+    if (req.body.teacher !== undefined) patchData.teacher = norm.teacher;
+    if (req.body.room !== undefined || req.body.classroom !== undefined) patchData.room = norm.room;
+    if (req.body.day !== undefined || req.body.weekday !== undefined) patchData.day = norm.day;
+    if (req.body.s !== undefined || req.body.start_slot !== undefined) patchData.s = norm.s;
+    if (req.body.e !== undefined || req.body.end_slot !== undefined) patchData.e = norm.e;
+    if (req.body.weeks !== undefined) patchData.weeks = norm.weeks;
+    if (req.body.color !== undefined) patchData.color = norm.color;
+
+    const updated = dbStore.updateCourse(username, id, patchData);
+    return res.json({ success: true, course: updated });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
 });
 
 apiRouter.put('/courses/:id', (req: Request, res: Response) => {
@@ -157,11 +246,29 @@ apiRouter.put('/courses/:id', (req: Request, res: Response) => {
   const id = Number(req.params.id);
 
   try {
-    const updated = dbStore.updateCourse(username, id, req.body);
-    return res.json({ course: updated });
+    const norm = normalizeCourseInput(req.body);
+    const updated = dbStore.updateCourse(username, id, norm);
+    return res.json({ success: true, course: updated });
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
   }
+});
+
+apiRouter.delete('/courses', (req: Request, res: Response) => {
+  const username = getCurrentUser(req);
+  if (!username) return res.status(401).json({ error: '未登录' });
+
+  const isAll = req.query.all === 'true' || req.body?.all === true;
+  if (isAll) {
+    dbStore.saveCourses(username, []);
+    return res.json({ success: true, count: 0, courses: [] });
+  }
+
+  const id = Number(req.query.id || req.body?.id);
+  if (!id) return res.status(400).json({ error: '请提供课程 id 或使用 ?all=true' });
+
+  dbStore.deleteCourse(username, id);
+  return res.json({ success: true, deletedId: id });
 });
 
 apiRouter.delete('/courses/:id', (req: Request, res: Response) => {
@@ -169,7 +276,7 @@ apiRouter.delete('/courses/:id', (req: Request, res: Response) => {
   if (!username) return res.status(401).json({ error: '未登录' });
   const id = Number(req.params.id);
   dbStore.deleteCourse(username, id);
-  return res.json({ success: true });
+  return res.json({ success: true, deletedId: id });
 });
 
 apiRouter.post('/courses/batch-replace', (req: Request, res: Response) => {
@@ -178,8 +285,9 @@ apiRouter.post('/courses/batch-replace', (req: Request, res: Response) => {
   const { courses } = req.body;
   if (!Array.isArray(courses)) return res.status(400).json({ error: '数据格式错误' });
 
-  dbStore.saveCourses(username, courses);
-  return res.json({ success: true, count: courses.length });
+  const normalized = courses.map(c => normalizeCourseInput(c));
+  dbStore.saveCourses(username, normalized);
+  return res.json({ success: true, count: normalized.length, courses: normalized });
 });
 
 apiRouter.post('/courses/reset-template', (req: Request, res: Response) => {
@@ -187,41 +295,160 @@ apiRouter.post('/courses/reset-template', (req: Request, res: Response) => {
   if (!username) return res.status(401).json({ error: '未登录' });
   const tpl = getDefaultTemplateCourses();
   dbStore.saveCourses(username, tpl);
-  return res.json({ courses: tpl });
+  return res.json({ success: true, courses: tpl });
 });
 
-// Homework endpoints
-apiRouter.get('/homework', (req: Request, res: Response) => {
+// ==========================================
+// Homework & Assignments endpoints
+// ==========================================
+function getFormattedAssignments(username: string) {
+  const hw = dbStore.getHomework(username);
+  return hw.map(h => ({
+    id: h.id,
+    course: h.course,
+    course_name: h.course,
+    title: h.title,
+    due: h.due || '',
+    deadline: h.due || '',
+    done: h.done,
+    completed: h.done ? 1 : 0,
+  }));
+}
+
+// GET /api/homework & /api/assignments
+const handleGetAssignments = (req: Request, res: Response) => {
   const username = getCurrentUser(req);
   if (!username) return res.status(401).json({ error: '未登录' });
-  return res.json({ homework: dbStore.getHomework(username) });
-});
+  const hw = dbStore.getHomework(username);
+  const formatted = getFormattedAssignments(username);
+  return res.json({ success: true, homework: hw, assignments: formatted });
+};
 
-apiRouter.post('/homework', (req: Request, res: Response) => {
+apiRouter.get('/homework', handleGetAssignments);
+apiRouter.get('/assignments', handleGetAssignments);
+
+// POST /api/homework & /api/assignments (single or batch)
+const handlePostAssignments = (req: Request, res: Response) => {
   const username = getCurrentUser(req);
   if (!username) return res.status(401).json({ error: '未登录' });
-  const { course, title, due } = req.body;
-  if (!title) return res.status(400).json({ error: '作业内容不能为空' });
 
-  const item = dbStore.addHomework(username, { course, title, due });
-  return res.json({ homework: item });
-});
+  // Batch support: { items: [...] } or { assignments: [...] } or array
+  const rawList = Array.isArray(req.body)
+    ? req.body
+    : (Array.isArray(req.body?.items)
+      ? req.body.items
+      : (Array.isArray(req.body?.assignments) ? req.body.assignments : null));
 
-apiRouter.put('/homework/:id/toggle', (req: Request, res: Response) => {
+  if (rawList) {
+    const replace = req.body?.replace === true;
+    if (replace) {
+      const current = dbStore.getHomework(username);
+      current.forEach(c => dbStore.deleteHomework(username, c.id));
+    }
+    const addedList = rawList.map((item: any) => {
+      const norm = normalizeAssignmentInput(item);
+      return dbStore.addHomework(username, {
+        course: norm.course,
+        title: norm.title || '待办作业',
+        due: norm.due || undefined,
+      });
+    });
+    const all = dbStore.getHomework(username);
+    const formatted = getFormattedAssignments(username);
+    return res.json({
+      success: true,
+      added: addedList,
+      homework: all,
+      assignments: formatted,
+    });
+  }
+
+  // Single assignment
+  const norm = normalizeAssignmentInput(req.body);
+  if (!norm.title) return res.status(400).json({ error: '作业内容不能为空' });
+
+  const added = dbStore.addHomework(username, {
+    course: norm.course,
+    title: norm.title,
+    due: norm.due || undefined,
+  });
+
+  const formattedItem = {
+    id: added.id,
+    course: added.course,
+    course_name: added.course,
+    title: added.title,
+    due: added.due,
+    deadline: added.due,
+    done: added.done,
+    completed: added.done ? 1 : 0,
+  };
+
+  return res.json({
+    success: true,
+    homework: added,
+    assignment: formattedItem,
+  });
+};
+
+apiRouter.post('/homework', handlePostAssignments);
+apiRouter.post('/assignments', handlePostAssignments);
+
+// PUT /api/homework & /api/assignments
+const handlePutAssignments = (req: Request, res: Response) => {
   const username = getCurrentUser(req);
   if (!username) return res.status(401).json({ error: '未登录' });
-  const id = Number(req.params.id);
+
+  const id = Number(req.body?.id || req.params?.id);
+  if (!id) return res.status(400).json({ error: '请提供作业 id' });
+
   const updated = dbStore.toggleHomework(username, id);
-  return res.json({ homework: updated });
-});
+  const formattedItem = {
+    id: updated.id,
+    course: updated.course,
+    course_name: updated.course,
+    title: updated.title,
+    due: updated.due,
+    deadline: updated.due,
+    done: updated.done,
+    completed: updated.done ? 1 : 0,
+  };
 
-apiRouter.delete('/homework/:id', (req: Request, res: Response) => {
+  return res.json({
+    success: true,
+    homework: updated,
+    assignment: formattedItem,
+  });
+};
+
+apiRouter.put('/homework/:id/toggle', handlePutAssignments);
+apiRouter.put('/assignments/:id/toggle', handlePutAssignments);
+apiRouter.put('/homework', handlePutAssignments);
+apiRouter.put('/assignments', handlePutAssignments);
+
+// DELETE /api/homework & /api/assignments
+const handleDeleteAssignments = (req: Request, res: Response) => {
   const username = getCurrentUser(req);
   if (!username) return res.status(401).json({ error: '未登录' });
-  const id = Number(req.params.id);
+
+  const isAll = req.query.all === 'true' || req.body?.all === true;
+  if (isAll) {
+    const list = dbStore.getHomework(username);
+    list.forEach(h => dbStore.deleteHomework(username, h.id));
+    return res.json({ success: true, count: 0, homework: [], assignments: [] });
+  }
+
+  const id = Number(req.params.id || req.query.id || req.body?.id);
+  if (!id) return res.status(400).json({ error: '请提供作业 id 或使用 ?all=true' });
+
   dbStore.deleteHomework(username, id);
-  return res.json({ success: true });
-});
+  return res.json({ success: true, deletedId: id });
+};
+
+apiRouter.delete('/homework', handleDeleteAssignments);
+apiRouter.delete('/assignments', handleDeleteAssignments);
+apiRouter.delete('/homework/:id', handleDeleteAssignments);
+apiRouter.delete('/assignments/:id', handleDeleteAssignments);
 
 // Console Homework Pool endpoints
 apiRouter.get('/homework/console-pool', (_req: Request, res: Response) => {
@@ -644,10 +871,11 @@ apiRouter.get('/calendar/:username/schedule.ics', (req: Request, res: Response) 
   const username = req.params.username;
   const user = dbStore.getUser(username);
   const courses = dbStore.getCourses(username);
+  const homework = dbStore.getHomework(username);
   const studentName = user ? user.name : username;
 
   import('./calendar').then(({ generateICS }) => {
-    const icsContent = generateICS(username, studentName, courses);
+    const icsContent = generateICS(username, studentName, courses, homework);
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="timetable-${username}.ics"`);
     res.setHeader('Cache-Control', 'no-cache');

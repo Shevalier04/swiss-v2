@@ -1,4 +1,4 @@
-import { Course } from '../types';
+import { Course, Homework } from '../types';
 import { SLOTS } from './time';
 
 const SEM_START = new Date(2026, 8, 7); // 2026-09-07 Week 1 Monday
@@ -34,7 +34,26 @@ function formatICSDate(d: Date, timeStr: string): string {
   return `${year}${month}${day}T${pad2(Number(h))}${pad2(Number(m))}00`;
 }
 
-export function generateClientICS(studentName: string, courses: Course[]): string {
+function parseDueDateTime(dueStr?: string): { start: string; end: string } | null {
+  const trimmed = String(dueStr || '').trim();
+  if (!trimmed) return null;
+
+  const m = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:\s+(\d{1,2}):(\d{1,2}))?/.exec(trimmed);
+  if (!m) return null;
+
+  const year = m[1];
+  const month = pad2(Number(m[2]));
+  const day = pad2(Number(m[3]));
+  const hour = m[4] ? Number(m[4]) : 22; // 默认晚 22:00 截止
+  const minute = m[5] ? Number(m[5]) : 0;
+
+  const startHour = Math.max(0, hour - 1);
+  const start = `${year}${month}${day}T${pad2(startHour)}${pad2(minute)}00`;
+  const end = `${year}${month}${day}T${pad2(hour)}${pad2(minute)}00`;
+  return { start, end };
+}
+
+export function generateClientICS(studentName: string, courses: Course[], homework: Homework[] = []): string {
   const lines: string[] = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -47,6 +66,7 @@ export function generateClientICS(studentName: string, courses: Course[]): strin
     'X-PUBLISHED-TTL:PT6H'
   ];
 
+  // 1. Courses VEVENTs
   courses.forEach(c => {
     const weekList = parseWeeks(c.weeks);
     const sTime = SLOTS[c.s]?.s || '08:00';
@@ -80,12 +100,40 @@ export function generateClientICS(studentName: string, courses: Course[]): strin
     });
   });
 
+  // 2. Uncompleted Homework VEVENTs
+  homework.forEach(h => {
+    if (h.done) return;
+    const dueInfo = parseDueDateTime(h.due);
+    if (!dueInfo) return;
+
+    const courseName = h.course || '日常学业';
+    const hwTitle = h.title || '待办作业';
+    const uid = `client-hw${h.id}-${dueInfo.start}@timetable`;
+
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:${uid}`,
+      `DTSTAMP:20261010T000000Z`,
+      `DTSTART;TZID=Asia/Shanghai:${dueInfo.start}`,
+      `DTEND;TZID=Asia/Shanghai:${dueInfo.end}`,
+      `SUMMARY:【作业截止】${courseName}：${hwTitle}`,
+      `DESCRIPTION:课程：${courseName}\\n作业内容：${hwTitle}\\n截止时间：${h.due || '未注明'}\\n状态：待完成\\n来源：掌上课表`,
+      'STATUS:CONFIRMED',
+      'BEGIN:VALARM',
+      'TRIGGER:-PT2H',
+      'ACTION:DISPLAY',
+      `DESCRIPTION:【作业截止提醒】${courseName}：${hwTitle} 截止临近，请及时提交！`,
+      'END:VALARM',
+      'END:VEVENT'
+    );
+  });
+
   lines.push('END:VCALENDAR');
   return lines.join('\r\n');
 }
 
-export function downloadCalendarFile(studentName: string, courses: Course[]) {
-  const content = generateClientICS(studentName, courses);
+export function downloadCalendarFile(studentName: string, courses: Course[], homework: Homework[] = []) {
+  const content = generateClientICS(studentName, courses, homework);
   const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

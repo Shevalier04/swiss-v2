@@ -42,6 +42,29 @@ export default defineConfig(() => {
               purpose: 'maskable',
             },
           ],
+          shortcuts: [
+            {
+              name: '今日课表',
+              short_name: '今日',
+              description: '查看今日课程与教室安排',
+              url: '/?tab=today',
+              icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+            },
+            {
+              name: '快速记作业',
+              short_name: '记作业',
+              description: '快速记录和查看课程作业',
+              url: '/?tab=hw',
+              icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+            },
+            {
+              name: '番茄钟待办',
+              short_name: '待办',
+              description: '个人任务清单与专注番茄钟',
+              url: '/?tab=tasks',
+              icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+            },
+          ],
         },
         devOptions: {
           enabled: true,

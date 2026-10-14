@@ -12,6 +12,20 @@ export function setStoredToken(token: string | null) {
   else localStorage.removeItem(TOKEN_KEY);
 }
 
+export class ApiError extends Error {
+  status?: number;
+  isBusinessError?: boolean;
+  isFallback?: boolean;
+
+  constructor(message: string, status?: number, isBusinessError?: boolean, isFallback?: boolean) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.isBusinessError = isBusinessError;
+    this.isFallback = isFallback;
+  }
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredToken();
   const headers = new Headers(options.headers || {});
@@ -21,19 +35,24 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers.set('X-User', token);
   }
 
-  const res = await fetch(`/api${endpoint}`, {
-    ...options,
-    headers,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`/api${endpoint}`, {
+      ...options,
+      headers,
+    });
+  } catch (err: any) {
+    throw new ApiError(err?.message || '网络连接失败', undefined, false, true);
+  }
 
   const contentType = res.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
-    throw new Error('BACKEND_HTML_FALLBACK');
+    throw new ApiError('BACKEND_HTML_FALLBACK', res.status, false, true);
   }
 
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(data.error || '请求失败');
+    throw new ApiError(data.error || `请求失败 (${res.status})`, res.status, true, false);
   }
   return data;
 }
@@ -49,15 +68,22 @@ export const api = {
       setStoredToken(res.token);
       return res;
     } catch (e: any) {
-      // 离线轻量模式用户直接允许登录
-      const name = username === 'admin' ? '系统管理员' : username;
-      const user: User = {
-        username,
-        name,
-        role: username === 'admin' ? 'admin' : 'user',
-      };
-      setStoredToken(username);
-      return { token: username, user };
+      // 明确的后端业务错误（如 401 密码错误、403 账号禁用、404 账号不存在）直接抛出给用户
+      if (e?.isBusinessError || (e?.status && e.status >= 400 && e.status < 500 && !e?.isFallback)) {
+        throw e;
+      }
+      // 仅在无后端环境/HTML 回退时才允许离线降级
+      if (e?.message === 'BACKEND_HTML_FALLBACK' || e?.isFallback) {
+        const name = username === 'admin' ? '系统管理员' : username;
+        const user: User = {
+          username,
+          name,
+          role: username === 'admin' ? 'admin' : 'user',
+        };
+        setStoredToken(username);
+        return { token: username, user };
+      }
+      throw e;
     }
   },
 
@@ -70,14 +96,20 @@ export const api = {
       setStoredToken(res.token);
       return res;
     } catch (e: any) {
-      const name = username === 'admin' ? '系统管理员' : username;
-      const user: User = {
-        username,
-        name,
-        role: username === 'admin' ? 'admin' : 'user',
-      };
-      setStoredToken(username);
-      return { token: username, user };
+      if (e?.isBusinessError || (e?.status && e.status >= 400 && e.status < 500 && !e?.isFallback)) {
+        throw e;
+      }
+      if (e?.message === 'BACKEND_HTML_FALLBACK' || e?.isFallback) {
+        const name = username === 'admin' ? '系统管理员' : username;
+        const user: User = {
+          username,
+          name,
+          role: username === 'admin' ? 'admin' : 'user',
+        };
+        setStoredToken(username);
+        return { token: username, user };
+      }
+      throw e;
     }
   },
 
@@ -321,6 +353,72 @@ export const api = {
   },
 
   // ==========================================
+  // Console Homework Pool (控制台作业库)
+  // ==========================================
+  async getConsoleHomeworkTemplates(): Promise<any[]> {
+    try {
+      const res = await request<{ templates: any[] }>('/homework/console-pool');
+      return res.templates || [];
+    } catch (e: any) {
+      try {
+        const saved = localStorage.getItem('cs_console_hw_pool');
+        if (saved) return JSON.parse(saved);
+      } catch (err) {}
+      return [
+        { id: 101, course: 'Web编程技术', title: '大作业：开发现代化课程表前端界面', due: '2026-11-20', creator: '控制台' },
+        { id: 102, course: '数据库概论', title: '实验三：SQL 复杂查询与索引优化分析', due: '2026-11-25', creator: '控制台' },
+        { id: 103, course: 'Java开发技术', title: '完成 Spring Boot 后端 RESTful 接口调试', due: '2026-11-28', creator: '控制台' },
+      ];
+    }
+  },
+
+  async addConsoleHomeworkTemplate(item: { course: string; title: string; due?: string }): Promise<any> {
+    try {
+      const res = await request<{ template: any }>('/homework/console-pool', {
+        method: 'POST',
+        body: JSON.stringify(item),
+      });
+      return res.template;
+    } catch (e: any) {
+      const current = await this.getConsoleHomeworkTemplates();
+      const newItem = {
+        id: Date.now(),
+        course: item.course || '其他',
+        title: item.title,
+        due: item.due,
+        creator: '本地管理员',
+      };
+      const updated = [...current, newItem];
+      try {
+        localStorage.setItem('cs_console_hw_pool', JSON.stringify(updated));
+      } catch (err) {}
+      return newItem;
+    }
+  },
+
+  async deleteConsoleHomeworkTemplate(id: number): Promise<void> {
+    try {
+      await request(`/homework/console-pool/${id}`, { method: 'DELETE' });
+    } catch (e: any) {
+      const current = await this.getConsoleHomeworkTemplates();
+      const filtered = current.filter(it => Number(it.id) !== Number(id));
+      try {
+        localStorage.setItem('cs_console_hw_pool', JSON.stringify(filtered));
+      } catch (err) {}
+    }
+  },
+
+  async clearConsoleHomeworkTemplates(): Promise<void> {
+    try {
+      await request('/homework/console-pool', { method: 'DELETE' });
+    } catch (e: any) {
+      try {
+        localStorage.setItem('cs_console_hw_pool', JSON.stringify([]));
+      } catch (err) {}
+    }
+  },
+
+  // ==========================================
   // Tasks - Cloudflare D1 (/api/tasks)
   // ==========================================
   async getTasks(): Promise<TaskItem[]> {
@@ -435,19 +533,51 @@ export const api = {
   },
 
   async toggleUserDisabled(username: string): Promise<{ disabled: boolean }> {
-    return { disabled: false };
+    try {
+      const res = await request<{ disabled: boolean }>(`/admin/users/${encodeURIComponent(username)}/toggle-disabled`, {
+        method: 'POST',
+      });
+      return { disabled: Boolean(res.disabled) };
+    } catch (e: any) {
+      return { disabled: false };
+    }
   },
 
-  async resetUserPassword(username: string, password: string): Promise<void> {},
+  async resetUserPassword(username: string, password: string): Promise<void> {
+    try {
+      await request(`/admin/users/${encodeURIComponent(username)}/reset-password`, {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      });
+    } catch (e: any) {
+      console.warn('Reset password API failed, using fallback:', e);
+    }
+  },
 
-  async deleteUser(username: string): Promise<void> {},
+  async deleteUser(username: string): Promise<void> {
+    try {
+      await request(`/admin/users/${encodeURIComponent(username)}`, {
+        method: 'DELETE',
+      });
+    } catch (e: any) {
+      console.warn('Delete user API failed, using fallback:', e);
+    }
+  },
 
   async runTerminalCommand(command: string): Promise<{ lines: { text: string; type?: string }[]; clear?: boolean }> {
-    return {
-      lines: [
-        { text: `[Cloudflare D1 云端数据库管理] ${command}`, type: 'info' },
-        { text: '已连接 Cloudflare D1 (swiss-db)，数据运行在边缘节点。', type: '' }
-      ]
-    };
+    try {
+      const res = await request<{ lines: { text: string; type?: string }[]; clear?: boolean }>('/admin/terminal', {
+        method: 'POST',
+        body: JSON.stringify({ command }),
+      });
+      return res;
+    } catch (e: any) {
+      return {
+        lines: [
+          { text: `[Cloudflare D1 / 离线模式] 执行命令: ${command}`, type: 'info' },
+          { text: '已连接本地或 D1 存储，高级管理服务请在完整服务端环境中运行。', type: '' }
+        ]
+      };
+    }
   },
 };

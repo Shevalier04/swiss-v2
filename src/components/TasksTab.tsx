@@ -1,17 +1,32 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { TaskItem } from '../types';
 import { pad2 } from '../utils/time';
-import { Trash2, Plus, Timer, Cloud, RefreshCw, Loader2, CheckCircle2, Circle, Sparkles } from 'lucide-react';
+import { Trash2, Plus, Timer, Cloud, RefreshCw, Loader2 } from 'lucide-react';
 import { PomodoroTimer } from './PomodoroTimer';
 import { SAMPLE_TASKS } from '../utils/sampleData';
+import { api } from '../services/api';
 
 interface TasksTabProps {
+  tasks: TaskItem[];
+  onAddTask: (title: string) => Promise<void>;
+  onToggleTask: (id: number) => Promise<void>;
+  onDeleteTask: (id: number) => Promise<void>;
+  onRefreshTasks?: () => Promise<void>;
+  onImportPresetTasks?: () => Promise<void>;
+  loading?: boolean;
   toast: (msg: string) => void;
 }
 
-export const TasksTab: React.FC<TasksTabProps> = ({ toast }) => {
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+export const TasksTab: React.FC<TasksTabProps> = ({
+  tasks,
+  onAddTask,
+  onToggleTask,
+  onDeleteTask,
+  onRefreshTasks,
+  onImportPresetTasks,
+  loading = false,
+  toast,
+}) => {
   const [filter, setFilter] = useState<'all' | 'todo' | 'done'>('all');
   const [title, setTitle] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -20,66 +35,19 @@ export const TasksTab: React.FC<TasksTabProps> = ({ toast }) => {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [selectedTaskForPomodoro, setSelectedTaskForPomodoro] = useState<string>('');
 
-  const getAuthHeaders = (): HeadersInit => {
-    const token = localStorage.getItem('cs_app_token');
-    const headers: Record<string, string> = {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-      headers['X-User'] = token;
-    }
-    return headers;
-  };
-
-  // 1. Fetch tasks from Cloudflare Pages /api/tasks (Cloudflare D1)
-  const fetchTasks = useCallback(async (isSilent = false) => {
-    if (!isSilent) setIsRefreshing(true);
+  const handleRefresh = async () => {
+    if (!onRefreshTasks) return;
+    setIsRefreshing(true);
     try {
-      const res = await fetch('/api/tasks', {
-        headers: getAuthHeaders(),
-      });
-
-      if (!res.ok) {
-        throw new Error(`网络请求失败 (${res.status})`);
-      }
-
-      const data = await res.json();
-      let rawList: any[] = [];
-      if (Array.isArray(data)) {
-        rawList = data;
-      } else if (Array.isArray(data.tasks)) {
-        rawList = data.tasks;
-      } else if (Array.isArray(data.data)) {
-        rawList = data.data;
-      }
-
-      const formatted: TaskItem[] = rawList.map((item: any) => ({
-        id: Number(item.id),
-        title: String(item.title || ''),
-        done: Boolean(item.completed !== undefined ? item.completed : item.done),
-      }));
-
-      setTasks(formatted);
-      if (!isSilent) {
-        toast('任务列表已成功刷新');
-      }
-    } catch (err: any) {
-      console.error('Fetch /api/tasks error:', err);
-      toast('无法同步云端任务，请检查网络');
+      await onRefreshTasks();
+      toast('任务列表已成功刷新');
+    } catch (e: any) {
+      toast('刷新失败，请检查网络');
     } finally {
-      setLoading(false);
       setIsRefreshing(false);
     }
-  }, [toast]);
+  };
 
-  // Initial load
-  useEffect(() => {
-    fetchTasks(true);
-  }, [fetchTasks]);
-
-  // 2. Add Task (POST /api/tasks)
   const handleAdd = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const trimmed = title.trim();
@@ -90,26 +58,7 @@ export const TasksTab: React.FC<TasksTabProps> = ({ toast }) => {
 
     setSubmitting(true);
     try {
-      const res = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ title: trimmed }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `创建失败 (${res.status})`);
-      }
-
-      const data = await res.json();
-      const rawTask = data.task || data;
-      const createdItem: TaskItem = {
-        id: Number(rawTask.id || Date.now()),
-        title: rawTask.title || trimmed,
-        done: Boolean(rawTask.completed !== undefined ? rawTask.completed : rawTask.done),
-      };
-
-      setTasks(prev => [createdItem, ...prev]);
+      await onAddTask(trimmed);
       setTitle('');
       toast('任务已保存至云端 D1 数据库');
     } catch (err: any) {
@@ -120,31 +69,10 @@ export const TasksTab: React.FC<TasksTabProps> = ({ toast }) => {
     }
   };
 
-  // 3. Toggle Task (PUT /api/tasks)
   const handleToggle = async (task: TaskItem) => {
-    const nextCompleted = !task.done;
     setTogglingId(task.id);
-
     try {
-      const res = await fetch('/api/tasks', {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          id: task.id,
-          completed: nextCompleted,
-          done: nextCompleted,
-        }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `更新失败 (${res.status})`);
-      }
-
-      // Update state directly upon confirmation
-      setTasks(prev =>
-        prev.map(t => (t.id === task.id ? { ...t, done: nextCompleted } : t))
-      );
+      await onToggleTask(task.id);
     } catch (err: any) {
       console.error('Toggle task error:', err);
       toast(err.message || '更新任务状态失败，请重试');
@@ -153,37 +81,29 @@ export const TasksTab: React.FC<TasksTabProps> = ({ toast }) => {
     }
   };
 
-  // 4. Delete Task (DELETE /api/tasks)
   const handleDelete = async (id: number) => {
     setDeletingId(id);
-
     try {
-      let res = await fetch(`/api/tasks?id=${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders(),
-      });
-
-      if (!res.ok) {
-        // Fallback for servers expecting body
-        res = await fetch('/api/tasks', {
-          method: 'DELETE',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ id }),
-        });
-      }
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `删除失败 (${res.status})`);
-      }
-
-      setTasks(prev => prev.filter(t => t.id !== id));
-      toast('任务已从云端删除');
+      await onDeleteTask(id);
     } catch (err: any) {
       console.error('Delete task error:', err);
       toast(err.message || '删除失败，请检查网络');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleImportSampleTasks = async () => {
+    try {
+      if (onImportPresetTasks) {
+        await onImportPresetTasks();
+      } else {
+        await api.batchAddTasks(SAMPLE_TASKS, false);
+        if (onRefreshTasks) await onRefreshTasks();
+      }
+      toast('已成功导入 4 项示例任务');
+    } catch (e: any) {
+      toast(e.message || '导入失败');
     }
   };
 
@@ -218,15 +138,17 @@ export const TasksTab: React.FC<TasksTabProps> = ({ toast }) => {
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => fetchTasks(false)}
-            disabled={isRefreshing || loading}
-            className="flex items-center gap-1.5 text-xs text-[#8f8b80] hover:text-[#e9e4d8] transition-colors cursor-pointer disabled:opacity-50"
-            title="从云端数据库重新加载任务"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">刷新</span>
-          </button>
+          {onRefreshTasks && (
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing || loading}
+              className="flex items-center gap-1.5 text-xs text-[#8f8b80] hover:text-[#e9e4d8] transition-colors cursor-pointer disabled:opacity-50"
+              title="从云端数据库重新加载任务"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">刷新</span>
+            </button>
+          )}
           <div className="font-editorial italic text-xs text-[#8f8b80]">
             {loading ? '加载中...' : `${pendingCount} 项待办`}
           </div>
@@ -317,23 +239,7 @@ export const TasksTab: React.FC<TasksTabProps> = ({ toast }) => {
             <div className="pt-2">
               <button
                 type="button"
-                onClick={async () => {
-                  try {
-                    const res = await fetch('/api/tasks', {
-                      method: 'POST',
-                      headers: getAuthHeaders(),
-                      body: JSON.stringify({ tasks: SAMPLE_TASKS }),
-                    });
-                    if (res.ok) {
-                      toast('已成功导入 4 项示例任务');
-                      fetchTasks(true);
-                    } else {
-                      toast('导入失败');
-                    }
-                  } catch (e) {
-                    toast('网络错误');
-                  }
-                }}
+                onClick={handleImportSampleTasks}
                 className="px-3.5 py-1.5 bg-[#6b7cff] hover:bg-[#5868e6] text-white text-xs font-bold rounded cursor-pointer transition-colors"
               >
                 一键导入 4 项示例任务

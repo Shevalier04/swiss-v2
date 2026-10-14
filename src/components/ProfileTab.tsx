@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { User, RemindSettings } from '../types';
 import {
   Terminal,
@@ -6,12 +6,11 @@ import {
   Download,
   Trash2,
   ChevronRight,
+  ChevronDown,
   Info,
   FileUp,
-  FolderArchive,
   Database,
   Cloud,
-  Sparkles,
 } from 'lucide-react';
 
 interface ProfileTabProps {
@@ -46,6 +45,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   toast,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showDataPanel, setShowDataPanel] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -261,40 +261,46 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
       {/* Section: Data Management */}
       <div>
         <div className="text-[10px] font-bold tracking-[3px] text-[#8f8b80] mb-1 font-mono">
-          DATA · 数据导入与云端管理
+          DATA · 数据与云端管理
         </div>
         <div className="border-t-2 border-[#e9e4d8] divide-y divide-[#2a2d34] text-sm">
+          {/* Unified Cloud Data Management Modal Entry */}
           {onOpenDataManagement && (
             <div
               onClick={onOpenDataManagement}
-              className="flex items-center justify-between py-3.5 cursor-pointer hover:bg-white/[0.04] transition-colors bg-[#6b7cff]/10 px-3 rounded mb-1 border border-[#6b7cff]/30"
+              className="flex items-center justify-between py-3.5 px-3.5 my-1.5 cursor-pointer hover:bg-[#6b7cff]/15 transition-all bg-[#6b7cff]/10 rounded border border-[#6b7cff]/35 shadow-sm group"
             >
-              <div className="flex items-center gap-2.5">
-                <Database className="w-4 h-4 text-[#6b7cff]" />
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded bg-[#6b7cff]/20 text-[#6b7cff] flex items-center justify-center shrink-0">
+                  <Database className="w-4 h-4" />
+                </div>
                 <div>
                   <div className="font-semibold text-[#e9e4d8] flex items-center gap-1.5">
-                    <span>云端数据管理与一键导入控制台</span>
-                    <span className="text-[10px] px-1.5 py-0.2 bg-[#6b7cff] text-white font-bold rounded">D1 云端</span>
+                    <span>云端数据管理中心</span>
+                    <span className="text-[10px] px-1.5 py-0.2 bg-[#6b7cff] text-white font-bold rounded">
+                      D1 集中管理
+                    </span>
                   </div>
                   <div className="text-xs text-[#8f8b80] mt-0.5">
-                    一键导入示例模板 · 批量 JSON/文本导入 · 全量备份导出 · 一键清空重置
+                    预设示例填充 · 批量导入 · 备份导出 · 一键重置
                   </div>
                 </div>
               </div>
-              <ChevronRight className="w-4 h-4 text-[#6b7cff]" />
+              <ChevronRight className="w-4 h-4 text-[#6b7cff] group-hover:translate-x-0.5 transition-transform" />
             </div>
           )}
 
+          {/* PDF Import Entry */}
           <div
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center justify-between py-3.5 cursor-pointer hover:bg-white/[0.03] transition-colors"
+            className="flex items-center justify-between py-3 cursor-pointer hover:bg-white/[0.03] transition-colors"
           >
             <div className="flex items-center gap-2.5">
               <FileUp className="w-4 h-4 text-[#6b7cff]" />
               <div>
                 <div className="font-semibold text-[#e9e4d8]">从教务系统 PDF 导入课表</div>
                 <div className="text-xs text-[#8f8b80] mt-0.5">
-                  智能解析横版或旋转排版教务处导出的 PDF 课表
+                  智能解析教务处导出的横版/旋转 PDF 课表
                 </div>
               </div>
             </div>
@@ -308,94 +314,56 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
             className="hidden"
           />
 
-          <div
-            onClick={onResetTemplate}
-            className="flex items-center justify-between py-3.5 cursor-pointer hover:bg-white/[0.03] transition-colors"
-          >
-            <div className="flex items-center gap-2.5">
-              <RotateCcw className="w-4 h-4 text-[#d99a2b]" />
-              <div>
-                <div className="font-semibold text-[#e9e4d8]">恢复预置学期课表</div>
-                <div className="text-xs text-[#8f8b80] mt-0.5">
-                  重置恢复为 2026-2027-1 标准班级课表
+          {/* Collapsible Panel for Quick Local Operations */}
+          <div>
+            <div
+              onClick={() => setShowDataPanel(!showDataPanel)}
+              className="flex items-center justify-between py-2.5 cursor-pointer text-xs text-[#8f8b80] hover:text-[#e9e4d8] transition-colors select-none"
+            >
+              <span className="font-mono text-[11px] tracking-wider">
+                {showDataPanel ? '收起快捷操作' : '展开更多快捷操作 (重置/导出/清空)'}
+              </span>
+              <ChevronDown
+                className={`w-3.5 h-3.5 transition-transform ${showDataPanel ? 'rotate-180 text-[#6b7cff]' : ''}`}
+              />
+            </div>
+
+            {showDataPanel && (
+              <div className="pl-2 pb-2 space-y-1.5 border-t border-[#2a2d34]/60 pt-2 text-xs">
+                <div
+                  onClick={onResetTemplate}
+                  className="flex items-center justify-between py-2 cursor-pointer hover:bg-white/[0.03] px-2 rounded transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <RotateCcw className="w-3.5 h-3.5 text-[#d99a2b]" />
+                    <span className="text-[#e9e4d8]">恢复预置学期示例课表</span>
+                  </div>
+                  <span className="text-[10px] text-[#8f8b80] font-mono">恢复默认</span>
+                </div>
+
+                <div
+                  onClick={onExportData}
+                  className="flex items-center justify-between py-2 cursor-pointer hover:bg-white/[0.03] px-2 rounded transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <Download className="w-3.5 h-3.5 text-[#4ade80]" />
+                    <span className="text-[#e9e4d8]">导出课表数据备份 (JSON)</span>
+                  </div>
+                  <span className="text-[10px] text-[#8f8b80] font-mono">下载备份</span>
+                </div>
+
+                <div
+                  onClick={onClearData}
+                  className="flex items-center justify-between py-2 cursor-pointer hover:bg-white/[0.03] px-2 rounded transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <Trash2 className="w-3.5 h-3.5 text-[#ff6b57]" />
+                    <span className="text-[#ff6b57]">清空我的课表与数据</span>
+                  </div>
+                  <span className="text-[10px] text-[#ff6b57] font-mono">清除全部</span>
                 </div>
               </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-[#63605a]" />
-          </div>
-
-          <div
-            onClick={onExportData}
-            className="flex items-center justify-between py-3.5 cursor-pointer hover:bg-white/[0.03] transition-colors"
-          >
-            <div className="flex items-center gap-2.5">
-              <Download className="w-4 h-4 text-[#4ade80]" />
-              <div>
-                <div className="font-semibold text-[#e9e4d8]">导出课表数据备份 (JSON)</div>
-                <div className="text-xs text-[#8f8b80] mt-0.5">备份包含课程、作业和任务的数据</div>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-[#63605a]" />
-          </div>
-
-          <div
-            onClick={() => {
-              const a = document.createElement('a');
-              a.href = '/course-schedule-github.zip';
-              a.download = 'course-schedule-github.zip';
-              a.click();
-              toast('已开始下载 GitHub 源码包 (ZIP)，可直接上传或推送到 GitHub 储存！');
-            }}
-            className="flex items-center justify-between py-3.5 cursor-pointer hover:bg-white/[0.03] transition-colors bg-[#232733] border border-[#6b7cff]/30 px-3 rounded mt-1"
-          >
-            <div className="flex items-center gap-2.5">
-              <FolderArchive className="w-4 h-4 text-[#6b7cff]" />
-              <div>
-                <div className="font-semibold text-[#e9e4d8] flex items-center gap-1.5">
-                  <span>导出 GitHub 仓库源码包 (ZIP)</span>
-                  <span className="text-[10px] px-1.5 py-0.2 bg-[#6b7cff] text-white font-bold rounded">GitHub 储存</span>
-                </div>
-                <div className="text-xs text-[#8f8b80] mt-0.5">含 README、工作流及完整源码，可一键上传至 GitHub 仓库</div>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-[#6b7cff]" />
-          </div>
-
-          <div
-            onClick={() => {
-              const a = document.createElement('a');
-              a.href = '/mobile.html';
-              a.download = '掌上课表-手机版.html';
-              a.click();
-              toast('已开始下载手机离线单文件 HTML，发送到微信/QQ点开即可使用！');
-            }}
-            className="flex items-center justify-between py-3.5 cursor-pointer hover:bg-white/[0.03] transition-colors bg-[#6b7cff]/10 px-2 rounded"
-          >
-            <div className="flex items-center gap-2.5">
-              <Download className="w-4 h-4 text-[#6b7cff]" />
-              <div>
-                <div className="font-semibold text-[#e9e4d8] flex items-center gap-1.5">
-                  <span>下载手机离线单文件 HTML</span>
-                  <span className="text-[10px] px-1.5 py-0.2 bg-[#6b7cff] text-white font-bold rounded">推荐</span>
-                </div>
-                <div className="text-xs text-[#8f8b80] mt-0.5">免服务器！发到微信/手机浏览器直接点开永久用</div>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-[#6b7cff]" />
-          </div>
-
-          <div
-            onClick={onClearData}
-            className="flex items-center justify-between py-3.5 cursor-pointer hover:bg-white/[0.03] transition-colors"
-          >
-            <div className="flex items-center gap-2.5">
-              <Trash2 className="w-4 h-4 text-[#ff6b57]" />
-              <div>
-                <div className="font-semibold text-[#ff6b57]">清空我的课表与数据</div>
-                <div className="text-xs text-[#8f8b80] mt-0.5">清空当前账户的所有课程和事项</div>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-[#63605a]" />
+            )}
           </div>
         </div>
       </div>

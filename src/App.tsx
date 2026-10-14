@@ -3,7 +3,7 @@ import { User, Course, Homework, TaskItem, Notice, RemindSettings } from './type
 import { api } from './services/api';
 import { SLOTS, toMinutes, isCourseInWeek, getWeekNo, getNextDayInfo, isSundayEvening } from './utils/time';
 import { playReminderBeep } from './utils/audio';
-import { SAMPLE_ASSIGNMENTS } from './utils/sampleData';
+import { SAMPLE_ASSIGNMENTS, SAMPLE_TASKS } from './utils/sampleData';
 
 import { PWAInstallBar } from './components/PWAInstallBar';
 import { AuthView } from './components/AuthView';
@@ -36,7 +36,16 @@ export default function App() {
   const [initialLoading, setInitialLoading] = useState(true);
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<'today' | 'week' | 'hw' | 'tasks' | 'mine' | 'widget' | 'remind'>('today');
+  const [activeTab, setActiveTab] = useState<'today' | 'week' | 'hw' | 'tasks' | 'mine' | 'widget' | 'remind'>(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const tabParam = searchParams.get('tab');
+      if (tabParam && ['today', 'week', 'hw', 'tasks', 'mine', 'widget', 'remind'].includes(tabParam)) {
+        return tabParam as any;
+      }
+    } catch (e) {}
+    return 'today';
+  });
 
   // App Data
   const [courses, setCourses] = useState<Course[]>([]);
@@ -132,6 +141,14 @@ export default function App() {
   const handleLoginSuccess = async (user: User) => {
     setCurrentUser(user);
     await loadAllUserData();
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const tabParam = searchParams.get('tab');
+      if (tabParam && ['today', 'week', 'hw', 'tasks', 'mine', 'widget', 'remind'].includes(tabParam)) {
+        setActiveTab(tabParam as any);
+        return;
+      }
+    } catch (e) {}
     setActiveTab('today');
   };
 
@@ -409,6 +426,16 @@ export default function App() {
     }
   };
 
+  const handleImportPresetTasks = async () => {
+    try {
+      await api.batchAddTasks(SAMPLE_TASKS, false);
+      await loadAllUserData();
+      showToast('4 项示例任务已同步至云端 D1');
+    } catch (e: any) {
+      showToast(e.message || '导入任务失败');
+    }
+  };
+
   const handleExportData = () => {
     if (!currentUser) return;
     const backup = {
@@ -448,6 +475,34 @@ export default function App() {
   const pendingHwCount = homework.filter(h => !h.done).length;
   const pendingTaskCount = tasks.filter(t => !t.done).length;
 
+  // PWA Badging API - Sync unread homework & tasks to desktop app icon
+  useEffect(() => {
+    const totalBadge = pendingHwCount + pendingTaskCount;
+    if (typeof navigator !== 'undefined' && 'setAppBadge' in navigator) {
+      if (totalBadge > 0) {
+        (navigator as any).setAppBadge(totalBadge).catch(() => {});
+      } else {
+        (navigator as any).clearAppBadge().catch(() => {});
+      }
+    }
+  }, [pendingHwCount, pendingTaskCount]);
+
+  // Handle URL change / shortcuts popstate
+  useEffect(() => {
+    const handleUrlTab = () => {
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        const tabParam = searchParams.get('tab');
+        if (tabParam && ['today', 'week', 'hw', 'tasks', 'mine', 'widget', 'remind'].includes(tabParam)) {
+          setActiveTab(tabParam as any);
+        }
+      } catch (e) {}
+    };
+    handleUrlTab();
+    window.addEventListener('popstate', handleUrlTab);
+    return () => window.removeEventListener('popstate', handleUrlTab);
+  }, []);
+
   if (initialLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#1d1f24] text-[#e9e4d8]">
@@ -485,23 +540,25 @@ export default function App() {
           <PWAInstallBar />
         </div>
 
-        {/* Top Cloud Status Bar & Data Management Trigger */}
-        <div className="px-4 py-2 flex items-center justify-between border-b border-[#33363d]/60 bg-[#17191e] shrink-0 text-xs select-none">
-          <div className="flex items-center gap-1.5 font-mono text-[11px] text-[#8f8b80]">
-            <Cloud className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-[#e9e4d8] font-bold">D1 边缘云存储</span>
-            <span className="text-[#63605a]">|</span>
-            <span>{courses.length}课 / {homework.length}作业 / {tasks.length}任务</span>
+        {/* Lightweight Top Status Bar - Only shown on Timetable or Profile tabs to save vertical space on Today, Homework, Tasks */}
+        {(activeTab === 'week' || activeTab === 'mine') && (
+          <div className="px-4 py-1.5 flex items-center justify-between border-b border-[#33363d]/40 bg-[#17191e]/90 shrink-0 text-xs select-none">
+            <div className="flex items-center gap-1.5 font-mono text-[10.5px] text-[#8f8b80]">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[#c4c0b6]">D1 云端</span>
+              <span className="text-[#45474e]">·</span>
+              <span>{courses.length}课 / {homework.length}作业 / {tasks.length}任务</span>
+            </div>
+            <button
+              onClick={() => setIsDataManagementOpen(true)}
+              className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold text-[#6b7cff] hover:text-white hover:bg-[#6b7cff]/30 transition-all cursor-pointer border border-[#6b7cff]/30 active:scale-95"
+              title="数据管理与一键导入"
+            >
+              <Database className="w-2.5 h-2.5" />
+              <span>数据管理</span>
+            </button>
           </div>
-          <button
-            onClick={() => setIsDataManagementOpen(true)}
-            className="flex items-center gap-1 px-2.5 py-0.5 rounded bg-[#6b7cff]/20 text-[#6b7cff] hover:bg-[#6b7cff] hover:text-white transition-all cursor-pointer text-xs font-bold border border-[#6b7cff]/40 shadow-xs active:scale-95"
-            title="数据管理与一键导入"
-          >
-            <Database className="w-3 h-3" />
-            <span>数据管理</span>
-          </button>
-        </div>
+        )}
 
         {/* Scrollable Tab Page Container */}
         <main className="flex-1 overflow-y-auto px-4.5 pt-3 pb-6 overscroll-contain">
@@ -564,6 +621,12 @@ export default function App() {
 
           {activeTab === 'tasks' && (
             <TasksTab
+              tasks={tasks}
+              onAddTask={handleAddTask}
+              onToggleTask={handleToggleTask}
+              onDeleteTask={handleDeleteTask}
+              onRefreshTasks={loadAllUserData}
+              onImportPresetTasks={handleImportPresetTasks}
               toast={showToast}
             />
           )}
@@ -590,6 +653,7 @@ export default function App() {
             <WidgetTab
               user={currentUser}
               courses={courses}
+              homework={homework}
               leadMinutes={remindSettings.lead}
               toast={showToast}
               onOpenCourse={c => {
