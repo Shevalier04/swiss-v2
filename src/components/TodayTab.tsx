@@ -342,7 +342,7 @@ export const TodayTab: React.FC<TodayTabProps> = ({
       )}
 
       {/* Progress Card */}
-      <div className="bg-[#1f2228] border-2 border-[#e9e4d8] p-4 text-[#e9e4d8] shadow-sm">
+      <div className="bg-[#1f2228] border-2 border-[#e9e4d8] p-4 text-[#e9e4d8] shadow-sm animate-editorial-up">
         <div className="flex items-center justify-between border-b border-[#343740] pb-2 mb-3">
           <div className="flex items-center gap-1.5 text-[9.5px] font-mono tracking-[3px] text-[#8f8b80]">
             <Clock className="w-3.5 h-3.5 text-[#6b7cff]" />
@@ -497,7 +497,8 @@ export const TodayTab: React.FC<TodayTabProps> = ({
             return (
               <div
                 onClick={() => onOpenCourse(activeCourse)}
-                className="bg-[#101216] border border-[#33363d] text-[#e9e4d8] p-4.5 rounded cursor-pointer hover:border-[#6b7cff] transition-colors"
+                className="bg-[#101216] border border-[#33363d] text-[#e9e4d8] p-4.5 rounded cursor-pointer hover:border-[#6b7cff] editorial-card-interactive animate-card-float-in"
+                style={{ animationDelay: '80ms' }}
               >
                 <div className="text-[9.5px] tracking-[4px] font-bold text-[#7a766c]">
                   NOW · 正在上课
@@ -526,7 +527,8 @@ export const TodayTab: React.FC<TodayTabProps> = ({
         ) : nextCourse ? (
           <div
             onClick={() => onOpenCourse(nextCourse)}
-            className="bg-[#26282e] border-2 border-[#e9e4d8] p-4 rounded text-[#e9e4d8] cursor-pointer hover:border-[#6b7cff] transition-colors"
+            className="bg-[#26282e] border-2 border-[#e9e4d8] p-4 rounded text-[#e9e4d8] cursor-pointer hover:border-[#6b7cff] editorial-card-interactive animate-card-float-in"
+            style={{ animationDelay: '80ms' }}
           >
             <div className="text-[9.5px] tracking-[4px] font-bold text-[#8f8b80]">
               NEXT · 下一节课
@@ -540,7 +542,10 @@ export const TodayTab: React.FC<TodayTabProps> = ({
             </div>
           </div>
         ) : (
-          <div className="bg-[#26282e] border border-[#33363d] p-4 rounded text-[#e9e4d8]">
+          <div
+            className="bg-[#26282e] border border-[#33363d] p-4 rounded text-[#e9e4d8] animate-editorial-up"
+            style={{ animationDelay: '80ms' }}
+          >
             <div className="text-[9.5px] tracking-[4px] font-bold text-[#8f8b80]">
               FREE · 空闲
             </div>
@@ -601,28 +606,32 @@ export const TodayTab: React.FC<TodayTabProps> = ({
             { title: '上午 · MORNING', list: displayCourses.filter(c => c.s <= 4) },
             { title: '下午 · AFTERNOON', list: displayCourses.filter(c => c.s >= 5 && c.s <= 8) },
             { title: '晚上 · EVENING', list: displayCourses.filter(c => c.s >= 9) },
-          ].map(grp => {
+          ].map((grp, grpIdx) => {
             if (!grp.list.length) return null;
             return (
-              <div key={grp.title}>
+              <div key={grp.title} className="animate-editorial-up" style={{ animationDelay: `${grpIdx * 60 + 100}ms` }}>
                 <div className="text-[9.5px] tracking-[3px] text-[#63605a] font-bold pb-1 mb-1 border-b border-[#33363d]">
                   {grp.title}
                 </div>
                 <div className="divide-y divide-[#2a2d34]">
-                  {grp.list.map(c => {
+                  {grp.list.map((c, cIdx) => {
                     const sMin = toMinutes(SLOTS[c.s].s);
                     const eMin = toMinutes(SLOTS[c.e].e);
                     const isDoing = !previewTomorrow && sMin <= currentMinutes && currentMinutes <= eMin;
                     const isDone = !previewTomorrow && currentMinutes > eMin;
                     const hwFlag = hwMap[c.name];
+                    const staggerDelay = (grpIdx * 3 + cIdx) * 50 + 140;
 
                     return (
                       <div
                         key={c.id}
                         onClick={() => onOpenCourse(c)}
-                        className={`flex gap-3 py-3.5 cursor-pointer transition-colors hover:bg-white/[0.03] ${
-                          isDone ? 'opacity-45' : ''
+                        className={`flex gap-3 py-3.5 px-3 -mx-2 rounded-sm cursor-pointer border border-transparent hover:border-[#6b7cff]/30 hover:bg-[#252832]/60 editorial-card-interactive active:scale-[0.99] animate-card-float-in ${
+                          isDone ? 'opacity-40' : ''
                         }`}
+                        style={{
+                          animationDelay: `${Math.min(500, staggerDelay)}ms`,
+                        }}
                       >
                         <div className="w-12 shrink-0 font-editorial font-bold text-sm leading-tight">
                           <div>{SLOTS[c.s].s}</div>

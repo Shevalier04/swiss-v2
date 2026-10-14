@@ -341,9 +341,32 @@ const handlePostAssignments = (req: Request, res: Response) => {
 
   if (rawList) {
     const replace = req.body?.replace === true;
+    let newCount = 0;
+    let updatedCount = 0;
     if (replace) {
       const current = dbStore.getHomework(username);
       current.forEach(c => dbStore.deleteHomework(username, c.id));
+      newCount = rawList.length;
+    } else {
+      // Upsert: deduplicate by course.trim().toLowerCase() and title.trim().toLowerCase()
+      let current = dbStore.getHomework(username);
+      rawList.forEach((item: any) => {
+        const norm = normalizeAssignmentInput(item);
+        const cName = (norm.course || '').trim().toLowerCase();
+        const tName = (norm.title || '').trim().toLowerCase();
+        const matchIndex = current.findIndex(h =>
+          (h.course || '').trim().toLowerCase() === cName &&
+          (h.title || '').trim().toLowerCase() === tName
+        );
+        if (matchIndex !== -1) {
+          updatedCount++;
+          const match = current[matchIndex];
+          dbStore.deleteHomework(username, match.id);
+          current.splice(matchIndex, 1);
+        } else {
+          newCount++;
+        }
+      });
     }
     const addedList = rawList.map((item: any) => {
       const norm = normalizeAssignmentInput(item);
@@ -360,6 +383,7 @@ const handlePostAssignments = (req: Request, res: Response) => {
       added: addedList,
       homework: all,
       assignments: formatted,
+      stats: { total: addedList.length, newCount, updatedCount },
     });
   }
 
@@ -476,14 +500,38 @@ apiRouter.post('/homework/console-pool/batch-sync', (req: Request, res: Response
   if (!Array.isArray(items) || !items.length) {
     return res.status(400).json({ error: '请提供待导入的作业列表' });
   }
-  const added = items.map(it =>
-    dbStore.addHomework(username, {
-      course: it.course || '其他',
-      title: it.title,
+
+  let current = dbStore.getHomework(username);
+  let newCount = 0;
+  let updatedCount = 0;
+
+  const added = items.map(it => {
+    const course = (it.course || '其他').trim();
+    const title = (it.title || '待办作业').trim();
+    const matchIndex = current.findIndex(h =>
+      (h.course || '').trim().toLowerCase() === course.toLowerCase() &&
+      (h.title || '').trim().toLowerCase() === title.toLowerCase()
+    );
+    if (matchIndex !== -1) {
+      updatedCount++;
+      const match = current[matchIndex];
+      dbStore.deleteHomework(username, match.id);
+      current.splice(matchIndex, 1);
+    } else {
+      newCount++;
+    }
+    return dbStore.addHomework(username, {
+      course,
+      title,
       due: it.due,
-    })
-  );
-  return res.json({ added, homework: dbStore.getHomework(username) });
+    });
+  });
+
+  return res.json({
+    added,
+    homework: dbStore.getHomework(username),
+    stats: { total: items.length, newCount, updatedCount }
+  });
 });
 
 apiRouter.delete('/homework/console-pool/:id', (req: Request, res: Response) => {

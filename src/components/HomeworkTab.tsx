@@ -51,7 +51,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
 
   // Modals state
   const [showSmartPasteModal, setShowSmartPasteModal] = useState(false);
-  const [showConsoleImportModal, setShowConsoleImportModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Optional expanded manual form
   const [showManualForm, setShowManualForm] = useState(false);
@@ -196,15 +196,15 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
             <span>智能粘贴导入</span>
           </button>
 
-          {/* Console pool template trigger */}
+          {/* Free Checklist Import Modal Trigger */}
           <button
             type="button"
-            onClick={() => setShowConsoleImportModal(true)}
-            className="px-2.5 py-1 bg-[#252834] hover:bg-[#303444] text-[#8f8b80] hover:text-[#e9e4d8] border border-[#33363d] rounded text-xs font-mono flex items-center gap-1 transition-all cursor-pointer shadow-xs"
-            title="从班级公共模板库导入"
+            onClick={() => setShowImportModal(true)}
+            className="px-2.5 py-1 bg-[#252834] hover:bg-[#303444] text-[#e9e4d8] border border-[#33363d] rounded text-xs font-medium flex items-center gap-1 transition-all cursor-pointer shadow-xs active:scale-95"
+            title="自由勾选并导入作业，支持自动覆盖更新"
           >
-            <DownloadCloud className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">模板库</span>
+            <DownloadCloud className="w-3.5 h-3.5 text-[#6b7cff]" />
+            <span>自由勾选导入</span>
           </button>
 
           <div className="font-editorial italic text-xs text-[#8f8b80] hidden sm:block ml-1">
@@ -425,13 +425,14 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
               <Sparkles className="w-3.5 h-3.5" />
               <span>智能粘贴群消息</span>
             </button>
-            {onImportPreset && filter === 'all' && (
+            {filter === 'all' && (
               <button
                 type="button"
-                onClick={onImportPreset}
-                className="px-3.5 py-1.5 bg-[#252834] hover:bg-[#303444] border border-[#e9e4d8]/40 text-[#e9e4d8] text-xs font-bold rounded cursor-pointer transition-colors"
+                onClick={() => setShowImportModal(true)}
+                className="px-3.5 py-1.5 bg-[#252834] hover:bg-[#303444] border border-[#e9e4d8]/40 text-[#e9e4d8] text-xs font-bold rounded cursor-pointer transition-colors flex items-center gap-1.5"
               >
-                导入 5 项示例作业
+                <DownloadCloud className="w-3.5 h-3.5 text-[#6b7cff]" />
+                <span>勾选导入作业清单</span>
               </button>
             )}
           </div>
@@ -513,18 +514,19 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
         isOpen={showSmartPasteModal}
         onClose={() => setShowSmartPasteModal(false)}
         courses={courses}
+        existingHomework={homework}
         onBatchImport={handleBatchImport}
         toast={toast}
       />
 
-      {/* Legacy Console Pool Import Modal */}
-      {showConsoleImportModal && (
+      {/* Free Checklist Import Modal */}
+      {showImportModal && (
         <HomeworkImportModal
           user={user}
           courses={courses}
           existingHomework={homework}
           onImport={handleBatchImport}
-          onClose={() => setShowConsoleImportModal(false)}
+          onClose={() => setShowImportModal(false)}
           toast={toast}
         />
       )}

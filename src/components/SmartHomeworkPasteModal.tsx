@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Course } from '../types';
+import { Course, Homework } from '../types';
 import { parseGroupNoticeText, ParsedGroupAssignmentItem } from '../utils/assignmentParser';
 import {
   X,
@@ -19,6 +19,7 @@ interface SmartHomeworkPasteModalProps {
   isOpen: boolean;
   onClose: () => void;
   courses: Course[];
+  existingHomework?: Homework[];
   onBatchImport: (items: { course: string; title: string; due?: string }[]) => Promise<void>;
   toast: (msg: string) => void;
 }
@@ -27,6 +28,7 @@ export const SmartHomeworkPasteModal: React.FC<SmartHomeworkPasteModalProps> = (
   isOpen,
   onClose,
   courses,
+  existingHomework = [],
   onBatchImport,
   toast,
 }) => {
@@ -80,7 +82,29 @@ export const SmartHomeworkPasteModal: React.FC<SmartHomeworkPasteModalProps> = (
     setParsedItems(prev => prev.filter(it => it.id !== id));
   };
 
+  const isItemExisting = (course: string, title: string) => {
+    const c = (course || '').trim().toLowerCase();
+    const t = (title || '').trim().toLowerCase();
+    if (!t) return false;
+    return existingHomework.some(
+      h => (h.course || '').trim().toLowerCase() === c && (h.title || '').trim().toLowerCase() === t
+    );
+  };
+
   const selectedItems = parsedItems.filter(it => it.selected);
+
+  const stats = useMemo(() => {
+    let newCount = 0;
+    let updatedCount = 0;
+    selectedItems.forEach(it => {
+      if (isItemExisting(it.course, it.title)) {
+        updatedCount++;
+      } else {
+        newCount++;
+      }
+    });
+    return { newCount, updatedCount };
+  }, [selectedItems, existingHomework]);
 
   const handleSubmit = async () => {
     if (selectedItems.length === 0) {
@@ -97,12 +121,11 @@ export const SmartHomeworkPasteModal: React.FC<SmartHomeworkPasteModalProps> = (
       }));
 
       await onBatchImport(payload);
-      toast(`成功批量存入 ${payload.length} 条作业到云端 D1 数据库！`);
       onClose();
       setInputText('');
       setParsedItems([]);
     } catch (e: any) {
-      toast(e.message || '批量存入失败');
+      toast(e.message || '批量导入失败');
     } finally {
       setSubmitting(false);
     }
@@ -164,18 +187,18 @@ export const SmartHomeworkPasteModal: React.FC<SmartHomeworkPasteModalProps> = (
           {parsedItems.length > 0 && (
             <div className="space-y-2.5">
               <div className="flex items-center justify-between border-b border-[#33363d] pb-1.5 text-xs">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-bold text-[#e9e4d8]">
                     已智能识别 {parsedItems.length} 条作业
                   </span>
-                  <span className="text-[10px] px-1.5 py-0.2 bg-[#6b7cff]/20 text-[#6b7cff] rounded font-mono">
-                    已选 {selectedItems.length} 条
+                  <span className="text-[10.5px] px-2 py-0.5 bg-[#6b7cff]/20 text-[#8ea4ff] border border-[#6b7cff]/40 rounded font-mono font-semibold">
+                    已选 {selectedItems.length} 条（新增 {stats.newCount} 项，覆盖更新 {stats.updatedCount} 项）
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={toggleSelectAll}
-                  className="text-xs text-[#8f8b80] hover:text-[#e9e4d8] cursor-pointer flex items-center gap-1"
+                  className="text-xs text-[#8f8b80] hover:text-[#e9e4d8] cursor-pointer flex items-center gap-1 shrink-0"
                 >
                   {selectedItems.length === parsedItems.length ? (
                     <>
@@ -192,29 +215,47 @@ export const SmartHomeworkPasteModal: React.FC<SmartHomeworkPasteModalProps> = (
               </div>
 
               <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                {parsedItems.map((item, idx) => (
-                  <div
-                    key={item.id}
-                    className={`p-2.5 rounded border transition-all ${
-                      item.selected
-                        ? 'bg-[#22252c] border-[#6b7cff]/50'
-                        : 'bg-[#181a1f] border-[#2f323a] opacity-60'
-                    }`}
-                  >
-                    <div className="flex items-start gap-2.5">
-                      <button
-                        type="button"
-                        onClick={() => toggleSelect(item.id)}
-                        className="mt-1 cursor-pointer shrink-0 text-[#8f8b80] hover:text-[#e9e4d8]"
-                      >
-                        {item.selected ? (
-                          <CheckSquare className="w-4 h-4 text-[#6b7cff]" />
-                        ) : (
-                          <Square className="w-4 h-4" />
-                        )}
-                      </button>
+                {parsedItems.map((item, idx) => {
+                  const existing = isItemExisting(item.course, item.title);
+                  return (
+                    <div
+                      key={item.id}
+                      className={`p-2.5 rounded border transition-all ${
+                        item.selected
+                          ? 'bg-[#22252c] border-[#6b7cff]/50'
+                          : 'bg-[#181a1f] border-[#2f323a] opacity-60'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => toggleSelect(item.id)}
+                          className="mt-1 cursor-pointer shrink-0 text-[#8f8b80] hover:text-[#e9e4d8]"
+                        >
+                          {item.selected ? (
+                            <CheckSquare className="w-4 h-4 text-[#6b7cff]" />
+                          ) : (
+                            <Square className="w-4 h-4" />
+                          )}
+                        </button>
 
-                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs">
+                        <div className="flex-1 space-y-1.5">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-[10px] text-[#8f8b80] font-mono">作业 #{idx + 1}</span>
+                            {existing ? (
+                              <span className="text-[10px] px-1.5 py-0.2 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded font-mono font-bold flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                覆盖更新
+                              </span>
+                            ) : (
+                              <span className="text-[10px] px-1.5 py-0.2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 rounded font-mono font-bold flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                新增
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs">
                         {/* Course input */}
                         <div className="sm:col-span-4">
                           <label className="block text-[9px] text-[#8f8b80] mb-0.5 font-mono">
@@ -259,8 +300,9 @@ export const SmartHomeworkPasteModal: React.FC<SmartHomeworkPasteModalProps> = (
                           />
                         </div>
                       </div>
+                    </div>
 
-                      <button
+                    <button
                         type="button"
                         onClick={() => removeItem(item.id)}
                         className="mt-1 p-1 text-[#8f8b80] hover:text-[#ff6b57] transition-colors cursor-pointer"
@@ -270,7 +312,8 @@ export const SmartHomeworkPasteModal: React.FC<SmartHomeworkPasteModalProps> = (
                       </button>
                     </div>
                   </div>
-                ))}
+                );
+              })}
               </div>
             </div>
           )}
@@ -307,7 +350,7 @@ export const SmartHomeworkPasteModal: React.FC<SmartHomeworkPasteModalProps> = (
             ) : (
               <>
                 <ClipboardCheck className="w-4 h-4" />
-                <span>一键存入云端数据库 ({selectedItems.length} 项)</span>
+                <span>导入所选作业 ({selectedItems.length} 项)</span>
               </>
             )}
           </button>

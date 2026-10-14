@@ -352,15 +352,50 @@ export default function App() {
   };
 
   const handleBatchAddHw = async (items: { course: string; title: string; due?: string }[]) => {
+    if (!items || !items.length) return;
+    let newCount = 0;
+    let updatedCount = 0;
+
+    // Fetch freshest homework to compare
+    let currentHw = homework;
     try {
-      await api.syncConsoleHomeworkBatch(items);
+      currentHw = await api.getHomework();
+    } catch (e) {}
+
+    // Identify duplicates by course.trim().toLowerCase() and title.trim().toLowerCase()
+    const matchesToDelete: number[] = [];
+    for (const item of items) {
+      const cName = (item.course || '').trim().toLowerCase();
+      const tName = (item.title || '').trim().toLowerCase();
+      const matchIndex = currentHw.findIndex(
+        h => (h.course || '').trim().toLowerCase() === cName && (h.title || '').trim().toLowerCase() === tName
+      );
+      if (matchIndex !== -1) {
+        updatedCount++;
+        matchesToDelete.push(currentHw[matchIndex].id);
+        currentHw.splice(matchIndex, 1);
+      } else {
+        newCount++;
+      }
+    }
+
+    // Call api.deleteHomework for each existing matched item to prevent duplicates in Cloudflare D1
+    for (const id of matchesToDelete) {
+      try {
+        await api.deleteHomework(id);
+      } catch (e) {}
+    }
+
+    try {
+      await api.batchAddHomework(items, false);
     } catch (e) {
       for (const item of items) {
         await api.addHomework(item);
       }
     }
-    const list = await api.getHomework();
-    setHomework(list);
+
+    await loadAllUserData();
+    showToast(`已成功导入 ${items.length} 项作业（新增 ${newCount} 项，覆盖更新 ${updatedCount} 项）`);
   };
 
   const handleToggleHw = async (id: number) => {
@@ -418,9 +453,7 @@ export default function App() {
 
   const handleImportPresetHw = async () => {
     try {
-      await api.batchAddHomework(SAMPLE_ASSIGNMENTS, false);
-      await loadAllUserData();
-      showToast('5 项示例作业已同步至云端 D1');
+      await handleBatchAddHw(SAMPLE_ASSIGNMENTS);
     } catch (e: any) {
       showToast(e.message || '导入作业失败');
     }

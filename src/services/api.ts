@@ -322,26 +322,55 @@ export const api = {
   },
 
   async batchAddHomework(items: { course: string; title: string; due?: string }[], replace = false): Promise<Homework[]> {
-    const res = await request<any>('/assignments', {
-      method: 'POST',
-      body: JSON.stringify({
-        items: items.map(it => ({
-          course_name: it.course,
-          title: it.title,
-          deadline: it.due,
-        })),
-        replace,
-      }),
-    });
+    try {
+      const res = await request<any>('/assignments', {
+        method: 'POST',
+        body: JSON.stringify({
+          items: items.map(it => ({
+            course_name: it.course,
+            title: it.title,
+            deadline: it.due,
+          })),
+          replace,
+        }),
+      });
 
-    const list = res.assignments || res.homework || [];
-    return list.map((item: any) => ({
-      id: Number(item.id),
-      course: String(item.course || item.course_name || '常规课程'),
-      title: String(item.title || ''),
-      due: item.due || item.deadline || '',
-      done: Boolean(item.completed !== undefined ? item.completed : item.done),
-    }));
+      const list = res.assignments || res.homework || [];
+      return list.map((item: any) => ({
+        id: Number(item.id),
+        course: String(item.course || item.course_name || '常规课程'),
+        title: String(item.title || ''),
+        due: item.due || item.deadline || '',
+        done: Boolean(item.completed !== undefined ? item.completed : item.done),
+      }));
+    } catch (e: any) {
+      // Local fallback with deduplicated upsert
+      let current = await this.getHomework();
+      if (replace) {
+        current = [];
+      } else {
+        items.forEach(newItem => {
+          const cName = newItem.course.trim().toLowerCase();
+          const tName = newItem.title.trim().toLowerCase();
+          current = current.filter(
+            h => !(h.course.trim().toLowerCase() === cName && h.title.trim().toLowerCase() === tName)
+          );
+        });
+      }
+      let maxId = current.reduce((m, h) => Math.max(m, h.id), 0);
+      const added = items.map(it => ({
+        id: ++maxId,
+        course: it.course,
+        title: it.title,
+        due: it.due || '',
+        done: false,
+      }));
+      const combined = [...current, ...added];
+      try {
+        localStorage.setItem('cs_local_hw', JSON.stringify(combined));
+      } catch (err) {}
+      return combined;
+    }
   },
 
   async clearAllHomework(): Promise<void> {

@@ -118,7 +118,7 @@ export function generateICS(username: string, studentName: string, courses: Cour
       `DTSTAMP:20261010T000000Z`,
       `DTSTART;TZID=Asia/Shanghai:${dueInfo.start}`,
       `DTEND;TZID=Asia/Shanghai:${dueInfo.end}`,
-      `SUMMARY:【作业截止】${courseName}：${hwTitle}`,
+      `SUMMARY:[作业] ${courseName}：${hwTitle}`,
       `DESCRIPTION:课程：${courseName}\\n作业内容：${hwTitle}\\n截止时间：${h.due || h.deadline || '未注明'}\\n状态：待完成\\n来源：掌上课表`,
       'STATUS:CONFIRMED',
       'BEGIN:VALARM',

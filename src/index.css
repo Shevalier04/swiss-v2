@@ -62,3 +62,61 @@
   background: #33363d;
   border-radius: 2px;
 }
+
+/* Swiss Editorial Motion & Dynamic Elegance */
+@keyframes editorialFadeSlideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes editorialCardFloatIn {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.99);
+  }
+  60% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-editorial-up {
+  animation: editorialFadeSlideUp 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+.animate-card-float-in {
+  animation: editorialCardFloatIn 0.44s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+.editorial-card-interactive {
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.22s ease;
+}
+
+.editorial-card-interactive:hover {
+  transform: translateY(-2.5px);
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-editorial-up,
+  .animate-card-float-in {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .editorial-card-interactive:hover {
+    transform: none !important;
+  }
+}
+

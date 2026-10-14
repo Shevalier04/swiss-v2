@@ -248,6 +248,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         const deadline = (item.deadline || item.due || '').trim();
         const completed = (item.completed || item.done) ? 1 : 0;
 
+        if (!body?.replace) {
+          statements.push(
+            env.DB.prepare(
+              `DELETE FROM assignments 
+               WHERE username = ? 
+               AND LOWER(TRIM(course_name)) = LOWER(TRIM(?)) 
+               AND LOWER(TRIM(title)) = LOWER(TRIM(?))`
+            ).bind(username, courseName, title)
+          );
+        }
+
         statements.push(
           env.DB.prepare(
             `INSERT INTO assignments (username, course_name, title, deadline, completed, created_at)
