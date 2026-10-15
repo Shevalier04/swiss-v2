@@ -235,14 +235,33 @@ class Store {
     this.persist();
   }
 
-  addHomework(username: string, item: { course: string; title: string; due?: string }): Homework {
+  addHomework(username: string, item: { course: string; title: string; due?: string; done?: boolean }): Homework {
     const list = this.getHomework(username);
+    const cName = (item.course || '').trim().toLowerCase();
+    const tName = (item.title || '').trim().toLowerCase();
+
+    const existingIdx = list.findIndex(h =>
+      (h.course || '').trim().toLowerCase() === cName &&
+      (h.title || '').trim().toLowerCase() === tName
+    );
+
+    if (existingIdx !== -1) {
+      // Upsert: update due date and preserve existing done state (or use explicit item.done)
+      list[existingIdx] = {
+        ...list[existingIdx],
+        due: item.due,
+        done: item.done !== undefined ? item.done : list[existingIdx].done,
+      };
+      this.saveHomework(username, list);
+      return list[existingIdx];
+    }
+
     const newHw: Homework = {
       id: Date.now() + Math.floor(Math.random() * 1000),
       course: item.course,
       title: item.title,
       due: item.due,
-      done: false
+      done: item.done !== undefined ? item.done : false,
     };
     list.unshift(newHw);
     this.saveHomework(username, list);
@@ -286,6 +305,26 @@ class Store {
 
   addConsoleHomework(item: { course: string; title: string; due?: string; creator?: string }) {
     const list = this.getConsoleHomework();
+    const cName = (item.course || '').trim().toLowerCase();
+    const tName = (item.title || '').trim().toLowerCase();
+
+    const existingIdx = list.findIndex(h =>
+      (h.course || '').trim().toLowerCase() === cName &&
+      (h.title || '').trim().toLowerCase() === tName
+    );
+
+    if (existingIdx !== -1) {
+      // Upsert: update due and creator
+      list[existingIdx] = {
+        ...list[existingIdx],
+        due: item.due,
+        creator: item.creator || list[existingIdx].creator,
+        createdAt: Date.now(),
+      };
+      this.saveConsoleHomework(list);
+      return list[existingIdx];
+    }
+
     const newHw = {
       id: Date.now() + Math.floor(Math.random() * 1000),
       course: item.course,

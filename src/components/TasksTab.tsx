@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TaskItem } from '../types';
 import { pad2 } from '../utils/time';
-import { Trash2, Plus, Timer, Cloud, RefreshCw, Loader2 } from 'lucide-react';
+import { Trash2, Plus, Timer, Cloud, RefreshCw, Loader2, Check, Mic } from 'lucide-react';
 import { PomodoroTimer } from './PomodoroTimer';
 import { SAMPLE_TASKS } from '../utils/sampleData';
 import { api } from '../services/api';
+import { VoiceInputModal } from './VoiceInputModal';
 
 interface TasksTabProps {
   tasks: TaskItem[];
@@ -13,6 +14,8 @@ interface TasksTabProps {
   onDeleteTask: (id: number) => Promise<void>;
   onRefreshTasks?: () => Promise<void>;
   onImportPresetTasks?: () => Promise<void>;
+  focusTaskTitle?: string;
+  setFocusTaskTitle?: (title: string) => void;
   loading?: boolean;
   toast: (msg: string) => void;
 }
@@ -24,6 +27,8 @@ export const TasksTab: React.FC<TasksTabProps> = ({
   onDeleteTask,
   onRefreshTasks,
   onImportPresetTasks,
+  focusTaskTitle,
+  setFocusTaskTitle,
   loading = false,
   toast,
 }) => {
@@ -33,7 +38,15 @@ export const TasksTab: React.FC<TasksTabProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [togglingId, setTogglingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [selectedTaskForPomodoro, setSelectedTaskForPomodoro] = useState<string>('');
+  const [selectedTaskForPomodoro, setSelectedTaskForPomodoro] = useState<string>(focusTaskTitle || '');
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+
+  // Synchronize incoming focusTaskTitle from external sources (e.g. HomeworkTab)
+  useEffect(() => {
+    if (focusTaskTitle) {
+      setSelectedTaskForPomodoro(focusTaskTitle);
+    }
+  }, [focusTaskTitle]);
 
   const handleRefresh = async () => {
     if (!onRefreshTasks) return;
@@ -131,6 +144,15 @@ export const TasksTab: React.FC<TasksTabProps> = ({
               <Cloud className="w-3 h-3 text-[#54b285]" />
               <span>D1 云端已同步</span>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowVoiceModal(true)}
+              className="flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 border border-[#ff6b57]/40 text-[#ff6b57] bg-[#ff6b57]/10 hover:bg-[#ff6b57] hover:text-white rounded transition-colors cursor-pointer active:scale-95"
+              title="使用 Gemini 3.5 语音识别快速录入待办任务"
+            >
+              <Mic className="w-3 h-3" />
+              <span>语音录入</span>
+            </button>
           </div>
           <div className="text-[9.5px] font-mono tracking-[3px] text-[#8f8b80] mt-0.5">
             CLOUDFLARE D1 TASKS & POMODORO TIMER
@@ -168,7 +190,11 @@ export const TasksTab: React.FC<TasksTabProps> = ({
         </span>
         {selectedTaskForPomodoro && (
           <button
-            onClick={() => setSelectedTaskForPomodoro('')}
+            type="button"
+            onClick={() => {
+              setSelectedTaskForPomodoro('');
+              if (setFocusTaskTitle) setFocusTaskTitle('');
+            }}
             className="text-[10px] font-mono text-[#8f8b80] hover:text-[#e9e4d8] underline cursor-pointer"
           >
             清除番茄钟关联
@@ -177,7 +203,7 @@ export const TasksTab: React.FC<TasksTabProps> = ({
       </div>
 
       {/* Add Form */}
-      <form onSubmit={handleAdd} className="bg-[#24262c] p-3 border border-[#33363d] rounded flex gap-2">
+      <form onSubmit={handleAdd} className="bg-[#24262c] p-3 border border-[#33363d] rounded flex gap-2 items-center">
         <input
           type="text"
           value={title}
@@ -187,8 +213,17 @@ export const TasksTab: React.FC<TasksTabProps> = ({
           className="flex-1 bg-transparent border-b-2 border-[#e9e4d8] text-sm text-[#e9e4d8] py-1 px-1 outline-none disabled:opacity-60"
         />
         <button
+          type="button"
+          onClick={() => setShowVoiceModal(true)}
+          className="px-2.5 py-1.5 bg-[#181a1f] hover:bg-[#ff6b57]/20 text-[#ff6b57] border border-[#3a3d46] hover:border-[#ff6b57] rounded transition-all cursor-pointer flex items-center justify-center shrink-0 active:scale-95"
+          title="麦克风语音录入待办任务 (Gemini 3.5 Transcribe)"
+        >
+          <Mic className="w-4 h-4" />
+          <span className="text-xs ml-1 font-medium hidden sm:inline">语音</span>
+        </button>
+        <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || !title.trim()}
           className="px-4 py-1.5 bg-[#e9e4d8] hover:bg-[#6b7cff] text-[#1d1f24] hover:text-white font-bold text-sm transition-colors cursor-pointer shrink-0 disabled:opacity-50 flex items-center gap-1.5"
         >
           {submitting ? (
@@ -257,30 +292,49 @@ export const TasksTab: React.FC<TasksTabProps> = ({
             return (
               <div
                 key={item.id}
-                className={`flex items-start gap-3 py-3 transition-opacity ${
+                className={`flex items-start gap-3 py-3 transition-all duration-150 rounded -mx-2 px-2 hover:bg-[#20222a]/50 ${
                   item.done ? 'opacity-40' : ''
-                } ${isSelectedForTimer ? 'bg-[#24262d] -mx-2 px-2 border-l-2 border-[#6b7cff]' : ''}`}
+                } ${isSelectedForTimer ? 'bg-[#24262d] border-l-2 border-[#6b7cff]' : ''}`}
               >
-                <span className="font-editorial italic text-xs text-[#63605a] w-5 pt-1 text-right shrink-0">
-                  {pad2(idx + 1)}
-                </span>
-
-                <button
+                {/* Left interactive trigger zone: Index + Enlarged Checkbox */}
+                <div
+                  className="flex items-center gap-2 shrink-0 pt-0.5 cursor-pointer select-none touch-manipulation group/check"
                   onClick={() => handleToggle(item)}
-                  disabled={isToggling}
-                  className={`w-5 h-5 border-2 border-[#e9e4d8] mt-0.5 flex items-center justify-center shrink-0 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 ${
-                    item.done ? 'bg-[#e9e4d8] text-[#1d1f24]' : 'bg-transparent text-transparent hover:border-[#6b7cff]'
-                  }`}
-                  title={item.done ? '标记为未完成' : '标记为已完成'}
+                  title={item.done ? '点击标记为未完成' : '点击标记为已完成'}
                 >
-                  {isToggling ? (
-                    <Loader2 className="w-3 h-3 animate-spin text-[#1d1f24]" />
-                  ) : item.done ? (
-                    '✓'
-                  ) : null}
-                </button>
+                  <span className="font-editorial italic text-xs text-[#63605a] group-hover/check:text-[#8f8b80] w-5 text-right transition-colors select-none">
+                    {pad2(idx + 1)}
+                  </span>
 
-                <div className="flex-1 min-w-0">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggle(item);
+                    }}
+                    className="p-2 -m-2 flex items-center justify-center cursor-pointer touch-manipulation outline-none focus-visible:ring-2 focus-visible:ring-[#6b7cff] rounded"
+                    aria-label={item.done ? '标记为未完成' : '标记为已完成'}
+                    title={item.done ? '点击标记为未完成' : '点击标记为已完成'}
+                  >
+                    <span
+                      className={`w-5 h-5 rounded-[3px] border-2 flex items-center justify-center transition-all duration-150 active:scale-75 select-none ${
+                        item.done
+                          ? 'bg-[#e9e4d8] border-[#e9e4d8] text-[#1d1f24] shadow-xs'
+                          : 'bg-transparent border-[#e9e4d8]/80 hover:border-[#6b7cff] hover:bg-[#6b7cff]/15 group-hover/check:border-[#6b7cff]'
+                      }`}
+                    >
+                      {item.done ? (
+                        <Check className="w-3.5 h-3.5 stroke-[3] text-[#1d1f24]" />
+                      ) : null}
+                    </span>
+                  </button>
+                </div>
+
+                <div
+                  className="flex-1 min-w-0 cursor-pointer select-none"
+                  onClick={() => handleToggle(item)}
+                  title={item.done ? '点击标记为未完成' : '点击标记为已完成'}
+                >
                   <div
                     className={`text-sm font-semibold break-words ${
                       item.done ? 'line-through text-[#8f8b80]' : 'text-[#e9e4d8]'
@@ -299,7 +353,13 @@ export const TasksTab: React.FC<TasksTabProps> = ({
                           进行中
                         </span>
                         <button
-                          onClick={() => setSelectedTaskForPomodoro(item.title)}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const next = isSelectedForTimer ? '' : item.title;
+                            setSelectedTaskForPomodoro(next);
+                            if (setFocusTaskTitle) setFocusTaskTitle(next);
+                          }}
                           className={`text-[10px] px-1.5 py-0.2 flex items-center gap-1 cursor-pointer transition-colors ${
                             isSelectedForTimer
                               ? 'bg-[#6b7cff] text-white font-bold'
@@ -331,6 +391,22 @@ export const TasksTab: React.FC<TasksTabProps> = ({
             );
           })}
         </div>
+      )}
+
+      {/* Voice Input Modal (Gemini 3.5 Transcribe) */}
+      {showVoiceModal && (
+        <VoiceInputModal
+          isOpen={showVoiceModal}
+          onClose={() => setShowVoiceModal(false)}
+          mode="task"
+          onConfirmText={text => {
+            setTitle(text);
+          }}
+          onDirectAdd={async text => {
+            await onAddTask(text);
+          }}
+          toast={toast}
+        />
       )}
     </div>
   );

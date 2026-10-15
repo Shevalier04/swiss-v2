@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Course, Homework, User } from '../types';
+import { Course, Homework, User, TaskItem } from '../types';
 import { dueDays, pad2 } from '../utils/time';
 import { parseQuickHomeworkLine } from '../utils/assignmentParser';
 import {
@@ -16,18 +16,24 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
+  Check,
+  Mic,
 } from 'lucide-react';
 import { HomeworkImportModal } from './HomeworkImportModal';
 import { SmartHomeworkPasteModal } from './SmartHomeworkPasteModal';
+import { VoiceInputModal } from './VoiceInputModal';
 
 interface HomeworkTabProps {
   user?: User | null;
   courses: Course[];
   homework: Homework[];
+  tasks?: TaskItem[];
   onAdd: (course: string, title: string, due?: string) => Promise<void>;
   onBatchAdd?: (items: { course: string; title: string; due?: string }[]) => Promise<void>;
   onToggle: (id: number) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
+  onAddTask?: (title: string) => Promise<void>;
+  onJumpToFocusTask?: (taskTitle: string) => void;
   onImportPreset?: () => void;
   toast: (msg: string) => void;
 }
@@ -36,10 +42,13 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
   user,
   courses,
   homework,
+  tasks = [],
   onAdd,
   onBatchAdd,
   onToggle,
   onDelete,
+  onAddTask,
+  onJumpToFocusTask,
   onImportPreset,
   toast,
 }) => {
@@ -52,6 +61,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
   // Modals state
   const [showSmartPasteModal, setShowSmartPasteModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
 
   // Optional expanded manual form
   const [showManualForm, setShowManualForm] = useState(false);
@@ -86,8 +96,8 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
     }
 
     const parsed = parseQuickHomeworkLine(trimmed, courseNames);
-    if (!parsed || !parsed.title.trim()) {
-      toast('未能识别到有效的作业内容');
+    if (!parsed || (!parsed.title.trim() && !parsed.course.trim())) {
+      toast('未能识别到有效的课程或作业内容');
       return;
     }
 
@@ -99,7 +109,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
     try {
       await onAdd(finalCourse, finalTitle, finalDue);
       setQuickText('');
-      toast(`已极速录入：[${finalCourse}] ${finalTitle}${finalDue ? ` ｜ 截止：${parsed.rawDueText || finalDue}` : ''}`);
+      toast(`已极速录入：[${finalCourse}]${finalTitle ? ` ${finalTitle}` : ''}${finalDue ? ` ｜ 截止：${parsed.rawDueText || finalDue}` : ''}`);
     } catch (err: any) {
       toast(err.message || '添加失败');
     } finally {
@@ -163,13 +173,74 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
     }
   };
 
-  const filteredList = homework.filter(h => {
-    if (filter === 'todo') return !h.done;
-    if (filter === 'done') return h.done;
-    return true;
-  });
+  // Immediate optimistic local overrides to guarantee 0ms instant UI reaction
+  const [optimisticToggles, setOptimisticToggles] = useState<Record<number, boolean>>({});
 
-  const pendingCount = homework.filter(h => !h.done).length;
+  const handleToggleHomework = (id: number) => {
+    // Subtle haptic feedback if mobile device supports it
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        navigator.vibrate(10);
+      } catch (e) {}
+    }
+
+    const currentItem = homework.find(h => Number(h.id) === Number(id));
+    if (!currentItem) return;
+    const currentDone = optimisticToggles[id] !== undefined ? optimisticToggles[id] : currentItem.done;
+    const nextDone = !currentDone;
+
+    // 1. Instant local optimistic update (0ms UI feedback)
+    setOptimisticToggles(prev => ({ ...prev, [id]: nextDone }));
+
+    // 2. Trigger parent toggle
+    onToggle(id).catch(() => {
+      // Revert if error
+      setOptimisticToggles(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      toast('更新作业状态失败，请重试');
+    });
+  };
+
+  // Sync back when homework prop from backend changes
+  React.useEffect(() => {
+    setOptimisticToggles(prev => {
+      const keys = Object.keys(prev);
+      if (keys.length === 0) return prev;
+      let changed = false;
+      const next = { ...prev };
+      for (const key of keys) {
+        const id = Number(key);
+        const item = homework.find(h => Number(h.id) === id);
+        if (item && item.done === prev[id]) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [homework]);
+
+  const effectiveHomework = useMemo(() => {
+    return homework.map(h => {
+      const override = optimisticToggles[h.id];
+      return override !== undefined ? { ...h, done: override } : h;
+    });
+  }, [homework, optimisticToggles]);
+
+  const filteredList = useMemo(() => {
+    return effectiveHomework.filter(h => {
+      if (filter === 'todo') return !h.done;
+      if (filter === 'done') return h.done;
+      return true;
+    });
+  }, [effectiveHomework, filter]);
+
+  const pendingCount = useMemo(() => {
+    return effectiveHomework.filter(h => !h.done).length;
+  }, [effectiveHomework]);
 
   return (
     <div className="space-y-3.5 pb-6">
@@ -185,6 +256,17 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          {/* Voice Input Trigger */}
+          <button
+            type="button"
+            onClick={() => setShowVoiceModal(true)}
+            className="px-2.5 py-1 bg-[#ff6b57]/15 hover:bg-[#ff6b57] text-[#ff6b57] hover:text-white border border-[#ff6b57]/40 rounded text-xs font-bold tracking-wider flex items-center gap-1 transition-all cursor-pointer shadow-xs active:scale-95"
+            title="点击使用麦克风语音输入作业 (Gemini 3.5 Transcribe)"
+          >
+            <Mic className="w-3.5 h-3.5" />
+            <span>语音录入</span>
+          </button>
+
           {/* Smart Group Notice Paste Modal Trigger */}
           <button
             type="button"
@@ -204,7 +286,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
             title="自由勾选并导入作业，支持自动覆盖更新"
           >
             <DownloadCloud className="w-3.5 h-3.5 text-[#6b7cff]" />
-            <span>自由勾选导入</span>
+            <span>官方作业同步</span>
           </button>
 
           <div className="font-editorial italic text-xs text-[#8f8b80] hidden sm:block ml-1">
@@ -235,6 +317,16 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
               </button>
             )}
           </div>
+
+          {/* Voice Input Button directly next to input */}
+          <button
+            type="button"
+            onClick={() => setShowVoiceModal(true)}
+            className="p-2 bg-[#181a1f] hover:bg-[#ff6b57]/20 text-[#ff6b57] border border-[#3a3d46] hover:border-[#ff6b57] rounded transition-all cursor-pointer flex items-center justify-center shrink-0 active:scale-95"
+            title="麦克风语音输入作业 (Gemini 3.5 Transcribe)"
+          >
+            <Mic className="w-4 h-4" />
+          </button>
 
           <button
             type="submit"
@@ -432,7 +524,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
                 className="px-3.5 py-1.5 bg-[#252834] hover:bg-[#303444] border border-[#e9e4d8]/40 text-[#e9e4d8] text-xs font-bold rounded cursor-pointer transition-colors flex items-center gap-1.5"
               >
                 <DownloadCloud className="w-3.5 h-3.5 text-[#6b7cff]" />
-                <span>勾选导入作业清单</span>
+                <span>同步官方作业清单</span>
               </button>
             )}
           </div>
@@ -443,40 +535,71 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
             const d = dueDays(item.due);
             const isUrgent = !item.done && d <= 0;
             const isSoon = !item.done && d > 0 && d <= 2;
+            const taskTitle = item.title ? `[${item.course}] ${item.title}` : `[${item.course}] 作业`;
+            const existingTask = (tasks || []).find(
+              t => !t.done && (t.title.trim() === taskTitle.trim() || (item.title && t.title.trim() === item.title.trim()))
+            );
 
             return (
               <div
                 key={item.id}
-                className={`flex items-start gap-3 py-3 transition-opacity ${
+                className={`flex items-start gap-3 py-3 -mx-2 px-2 rounded transition-all duration-150 hover:bg-[#20222a]/50 group/row ${
                   item.done ? 'opacity-40' : ''
                 }`}
               >
-                <span className="font-editorial italic text-xs text-[#63605a] w-5 pt-1 text-right shrink-0">
-                  {pad2(idx + 1)}
-                </span>
-
-                <button
-                  onClick={() => onToggle(item.id)}
-                  className={`w-5 h-5 border-2 border-[#e9e4d8] mt-0.5 flex items-center justify-center shrink-0 text-xs font-bold transition-colors cursor-pointer ${
-                    item.done ? 'bg-[#e9e4d8] text-[#1d1f24]' : 'bg-transparent text-transparent hover:border-[#6b7cff]'
-                  }`}
-                  title={item.done ? '标记为未完成' : '标记为已完成'}
+                {/* Left interactive trigger zone: Index + Enlarged Checkbox */}
+                <div
+                  className="flex items-center gap-2 shrink-0 pt-0.5 cursor-pointer select-none touch-manipulation group/check"
+                  onClick={() => handleToggleHomework(item.id)}
+                  title={item.done ? '点击标记为未完成' : '点击标记为已完成'}
                 >
-                  {item.done ? '✓' : ''}
-                </button>
+                  <span className="font-editorial italic text-xs text-[#63605a] group-hover/check:text-[#8f8b80] w-5 text-right transition-colors select-none">
+                    {pad2(idx + 1)}
+                  </span>
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold text-xs px-1.5 py-0.5 bg-[#2a2d36] text-[#6b7cff] border border-[#6b7cff]/30 rounded">
-                      {item.course}
-                    </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleHomework(item.id);
+                    }}
+                    className="p-2 -m-2 flex items-center justify-center cursor-pointer touch-manipulation outline-none focus-visible:ring-2 focus-visible:ring-[#6b7cff] rounded"
+                    aria-label={item.done ? '标记为未完成' : '标记为已完成'}
+                    title={item.done ? '点击标记为未完成' : '点击标记为已完成'}
+                  >
                     <span
-                      className={`text-sm font-semibold break-words ${
-                        item.done ? 'line-through text-[#8f8b80]' : 'text-[#e9e4d8]'
+                      className={`w-5 h-5 rounded-[3px] border-2 flex items-center justify-center transition-all duration-150 active:scale-75 select-none ${
+                        item.done
+                          ? 'bg-[#e9e4d8] border-[#e9e4d8] text-[#1d1f24] shadow-xs'
+                          : 'bg-transparent border-[#e9e4d8]/80 hover:border-[#6b7cff] hover:bg-[#6b7cff]/15 group-hover/check:border-[#6b7cff]'
                       }`}
                     >
-                      {item.title}
+                      {item.done ? (
+                        <Check className="w-3.5 h-3.5 stroke-[3] text-[#1d1f24]" />
+                      ) : null}
                     </span>
+                  </button>
+                </div>
+
+                {/* Content area: Also clickable to toggle completion with ease */}
+                <div
+                  onClick={() => handleToggleHomework(item.id)}
+                  className="flex-1 min-w-0 cursor-pointer select-none group/content"
+                  title={item.done ? '点击标记为未完成' : '点击标记为已完成'}
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-xs px-1.5 py-0.5 bg-[#2a2d36] text-[#6b7cff] border border-[#6b7cff]/30 rounded group-hover/content:border-[#6b7cff]/60 transition-colors">
+                      {item.course}
+                    </span>
+                    {item.title ? (
+                      <span
+                        className={`text-sm font-semibold break-words transition-colors ${
+                          item.done ? 'line-through text-[#8f8b80]' : 'text-[#e9e4d8] group-hover/content:text-white'
+                        }`}
+                      >
+                        {item.title}
+                      </span>
+                    ) : null}
                   </div>
 
                   <div className="flex items-center gap-3 text-xs text-[#8f8b80] mt-1">
@@ -496,9 +619,55 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
                   </div>
                 </div>
 
+                {/* One-click Add to Tasks / Jump to Pomodoro Focus */}
+                {!item.done && (
+                  <div className="shrink-0 flex items-center pt-0.5">
+                    {!existingTask ? (
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (onAddTask) {
+                            try {
+                              await onAddTask(taskTitle);
+                              toast(`已顺手加入待办：${taskTitle}`);
+                            } catch (err: any) {
+                              toast('加入待办失败，请重试');
+                            }
+                          }
+                        }}
+                        className="px-2 py-0.5 border border-[#3a3d46] hover:border-[#6b7cff] text-[#8f8b80] hover:text-[#6b7cff] text-[11px] rounded transition-all cursor-pointer flex items-center gap-1 active:scale-95 group/btn"
+                        title="顺手将此项作业加到个人待办清单，方便规划与专注"
+                      >
+                        <Plus className="w-3 h-3 group-hover/btn:scale-110 transition-transform" />
+                        <span>待办</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onJumpToFocusTask) {
+                            onJumpToFocusTask(existingTask.title);
+                          }
+                        }}
+                        className="px-2 py-0.5 bg-[#6b7cff]/20 hover:bg-[#6b7cff] text-[#6b7cff] hover:text-white border border-[#6b7cff]/40 hover:border-[#6b7cff] text-[11px] font-bold rounded transition-all cursor-pointer flex items-center gap-1 shadow-xs active:scale-95"
+                        title="此作业已在待办中，点击立即切换至专注番茄钟开始计时"
+                      >
+                        <span>🍅 去专注</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Delete button */}
                 <button
-                  onClick={() => onDelete(item.id)}
-                  className="text-[#63605a] hover:text-[#ff6b57] transition-colors p-1 cursor-pointer shrink-0"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(item.id);
+                  }}
+                  className="text-[#63605a] hover:text-[#ff6b57] transition-colors p-1.5 -m-0.5 cursor-pointer shrink-0"
                   title="删除"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -510,14 +679,16 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
       )}
 
       {/* Smart Group Notice Paste Modal */}
-      <SmartHomeworkPasteModal
-        isOpen={showSmartPasteModal}
-        onClose={() => setShowSmartPasteModal(false)}
-        courses={courses}
-        existingHomework={homework}
-        onBatchImport={handleBatchImport}
-        toast={toast}
-      />
+      {showSmartPasteModal && (
+        <SmartHomeworkPasteModal
+          isOpen={showSmartPasteModal}
+          onClose={() => setShowSmartPasteModal(false)}
+          courses={courses}
+          existingHomework={homework}
+          onBatchImport={handleBatchImport}
+          toast={toast}
+        />
+      )}
 
       {/* Free Checklist Import Modal */}
       {showImportModal && (
@@ -527,6 +698,27 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
           existingHomework={homework}
           onImport={handleBatchImport}
           onClose={() => setShowImportModal(false)}
+          toast={toast}
+        />
+      )}
+
+      {/* Voice Input Modal (Gemini 3.5 Transcribe) */}
+      {showVoiceModal && (
+        <VoiceInputModal
+          isOpen={showVoiceModal}
+          onClose={() => setShowVoiceModal(false)}
+          mode="homework"
+          courseNames={courseNames}
+          onConfirmText={text => {
+            setQuickText(text);
+          }}
+          onDirectAdd={async (text, parsed) => {
+            const parsedHw = parsed || parseQuickHomeworkLine(text, courseNames);
+            const finalCourse = parsedHw?.course || courseNames[0] || '常规课程';
+            const finalTitle = parsedHw?.title || '';
+            const finalDue = parsedHw?.due;
+            await onAdd(finalCourse, finalTitle, finalDue);
+          }}
           toast={toast}
         />
       )}

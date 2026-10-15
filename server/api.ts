@@ -1,9 +1,11 @@
 import express, { Request, Response } from 'express';
+import { GoogleGenAI } from '@google/genai';
 import { dbStore } from './store';
 import { getDefaultTemplateCourses, PALETTE } from './data';
 
 export const apiRouter = express.Router();
-apiRouter.use(express.json());
+apiRouter.use(express.json({ limit: '25mb' }));
+apiRouter.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // Simple Bearer token / username resolution
 export function getCurrentUser(req: Request): string | null {
@@ -482,13 +484,16 @@ apiRouter.get('/homework/console-pool', (_req: Request, res: Response) => {
 apiRouter.post('/homework/console-pool', (req: Request, res: Response) => {
   const username = getCurrentUser(req);
   const user = username ? dbStore.getUser(username) : null;
+  if (user?.role !== 'admin') {
+    return res.status(403).json({ error: '仅管理员可通过终端管理官方作业池' });
+  }
   const { course, title, due } = req.body;
   if (!title) return res.status(400).json({ error: '作业内容不能为空' });
   const item = dbStore.addConsoleHomework({
     course: course || '其他',
     title: String(title).trim(),
     due: due ? String(due).trim() : undefined,
-    creator: user?.name || username || '控制台'
+    creator: user?.name || username || '系统管理员'
   });
   return res.json({ template: item });
 });
@@ -512,9 +517,11 @@ apiRouter.post('/homework/console-pool/batch-sync', (req: Request, res: Response
       (h.course || '').trim().toLowerCase() === course.toLowerCase() &&
       (h.title || '').trim().toLowerCase() === title.toLowerCase()
     );
+    let preservedDone = false;
     if (matchIndex !== -1) {
       updatedCount++;
       const match = current[matchIndex];
+      preservedDone = Boolean(match.done);
       dbStore.deleteHomework(username, match.id);
       current.splice(matchIndex, 1);
     } else {
@@ -524,6 +531,7 @@ apiRouter.post('/homework/console-pool/batch-sync', (req: Request, res: Response
       course,
       title,
       due: it.due,
+      done: preservedDone,
     });
   });
 
@@ -535,12 +543,22 @@ apiRouter.post('/homework/console-pool/batch-sync', (req: Request, res: Response
 });
 
 apiRouter.delete('/homework/console-pool/:id', (req: Request, res: Response) => {
+  const username = getCurrentUser(req);
+  const user = username ? dbStore.getUser(username) : null;
+  if (user?.role !== 'admin') {
+    return res.status(403).json({ error: '仅管理员可通过终端管理官方作业池' });
+  }
   const id = Number(req.params.id);
   dbStore.deleteConsoleHomework(id);
   return res.json({ success: true, templates: dbStore.getConsoleHomework() });
 });
 
-apiRouter.delete('/homework/console-pool', (_req: Request, res: Response) => {
+apiRouter.delete('/homework/console-pool', (req: Request, res: Response) => {
+  const username = getCurrentUser(req);
+  const user = username ? dbStore.getUser(username) : null;
+  if (user?.role !== 'admin') {
+    return res.status(403).json({ error: '仅管理员可通过终端管理官方作业池' });
+  }
   dbStore.clearConsoleHomework();
   return res.json({ success: true, templates: [] });
 });
@@ -949,3 +967,61 @@ apiRouter.get('/widget/:username/today.svg', (req: Request, res: Response) => {
     res.status(500).send('<svg xmlns="http://www.w3.org/2000/svg"><text y="20">Error</text></svg>');
   });
 });
+
+// Gemini AI Audio Transcription (model: gemini-3.5-transcribe)
+let geminiClient: GoogleGenAI | null = null;
+function getGeminiClient(): GoogleGenAI {
+  if (!geminiClient) {
+    geminiClient = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+  }
+  return geminiClient;
+}
+
+apiRouter.post('/ai/transcribe', async (req: Request, res: Response) => {
+  try {
+    const { audio, mimeType, prompt } = req.body || {};
+    if (!audio) {
+      return res.status(400).json({ error: '请提供录音音频数据' });
+    }
+
+    const cleanBase64 = String(audio).replace(/^data:[^;]+;base64,/, '').trim();
+    const cleanMimeType = mimeType || 'audio/webm';
+
+    const ai = getGeminiClient();
+    const audioPart = {
+      inlineData: {
+        mimeType: cleanMimeType,
+        data: cleanBase64,
+      },
+    };
+
+    const promptText = prompt || '请原样准确转录这段语音音频内容，输出中文或英文原话纯文本。不要添加任何多余解说、前缀、标号或特殊排版。如果是布置或记录作业/待办，完整保留课程名、作业内容和截止时间。';
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.5-transcribe',
+      contents: {
+        parts: [
+          audioPart,
+          { text: promptText },
+        ],
+      },
+    });
+
+    const text = response.text ? response.text.trim() : '';
+    return res.json({ text, success: true });
+  } catch (err: any) {
+    console.error('Gemini audio transcription error:', err);
+    return res.status(500).json({
+      error: err.message || '语音转录失败，请检查网络后重试',
+      success: false,
+    });
+  }
+});
+

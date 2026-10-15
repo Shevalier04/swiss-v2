@@ -28,6 +28,7 @@ export interface TaskItem {
   id: number;
   title: string;
   done: boolean;
+  created_at?: string;
 }
 
 export interface User {

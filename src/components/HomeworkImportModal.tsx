@@ -6,13 +6,10 @@ import {
   X,
   CheckSquare,
   Square,
-  Sparkles,
   DownloadCloud,
   Check,
   Search,
   RotateCcw,
-  Plus,
-  Trash2,
   Calendar,
   AlertCircle,
   Loader2,
@@ -51,22 +48,10 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCourseFilter, setSelectedCourseFilter] = useState<string>('all');
 
-  // Manual new item inline adder
-  const [showQuickAdd, setShowQuickAdd] = useState(false);
-  const [newItemCourse, setNewItemCourse] = useState('');
-  const [newItemTitle, setNewItemTitle] = useState('');
-  const [newItemDue, setNewItemDue] = useState('');
-
   const courseNames = useMemo(() => {
     const list = Array.from(new Set(courses.map(c => c.name))).filter(Boolean);
     return list.length ? list : ['Web编程技术', '数据库概论', 'Java开发技术', '计算机网络', '软件工程导论'];
   }, [courses]);
-
-  useEffect(() => {
-    if (!newItemCourse && courseNames.length) {
-      setNewItemCourse(courseNames[0]);
-    }
-  }, [courseNames, newItemCourse]);
 
   // Normalized matching helper: course.trim().toLowerCase() and title.trim().toLowerCase()
   const isItemExisting = (course: string, title: string) => {
@@ -86,38 +71,30 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
     setLoading(true);
     try {
       const data = await api.getConsoleHomeworkTemplates();
-      let list: HomeworkTemplateItem[] = data || [];
+      let list: HomeworkTemplateItem[] = Array.isArray(data) ? [...data] : [];
 
-      // Combine with sample presets if list is small or empty
-      const sampleItems: HomeworkTemplateItem[] = SAMPLE_ASSIGNMENTS.map((s, idx) => ({
-        id: -(idx + 1),
-        course: s.course,
-        title: s.title,
-        due: s.due,
-        creator: '推荐示例',
-      }));
-
-      // Merge and deduplicate
-      const existingKeys = new Set(list.map(t => `${t.course}__${t.title}`.toLowerCase()));
-      sampleItems.forEach(sample => {
-        const key = `${sample.course}__${sample.title}`.toLowerCase();
-        if (!existingKeys.has(key)) {
-          list.push(sample);
-          existingKeys.add(key);
-        }
-      });
+      // Combine with sample presets if empty
+      if (list.length === 0) {
+        list = SAMPLE_ASSIGNMENTS.map((s, idx) => ({
+          id: -(idx + 1),
+          course: s.course,
+          title: s.title,
+          due: s.due,
+          creator: '官方预设',
+        }));
+      }
 
       setTemplates(list);
-      // Default: select all for user convenience
+      // Select all by default for user convenience
       setSelectedIds(new Set(list.map(t => t.id)));
     } catch (e: any) {
-      toast('获取作业库失败，已载入内置示例');
+      toast('获取官方作业池失败，已载入内置标准作业');
       const sampleItems = SAMPLE_ASSIGNMENTS.map((s, idx) => ({
         id: -(idx + 1),
         course: s.course,
         title: s.title,
         due: s.due,
-        creator: '推荐示例',
+        creator: '官方预设',
       }));
       setTemplates(sampleItems);
       setSelectedIds(new Set(sampleItems.map(t => t.id)));
@@ -127,16 +104,8 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
   };
 
   const handleResetPresets = () => {
-    const sampleItems = SAMPLE_ASSIGNMENTS.map((s, idx) => ({
-      id: -(Date.now() + idx),
-      course: s.course,
-      title: s.title,
-      due: s.due,
-      creator: '推荐示例',
-    }));
-    setTemplates(sampleItems);
-    setSelectedIds(new Set(sampleItems.map(t => t.id)));
-    toast('已重置并载入系统推荐作业示例');
+    loadTemplates();
+    toast('已重新从服务器同步官方作业池');
   };
 
   const toggleSelect = (id: number) => {
@@ -214,42 +183,6 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
     }
   };
 
-  const handleDeleteItem = async (id: number, title: string) => {
-    setTemplates(prev => prev.filter(t => t.id !== id));
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-    if (id > 0) {
-      try {
-        await api.deleteConsoleHomeworkTemplate(id);
-      } catch (e) {}
-    }
-    toast(`已移除：${title}`);
-  };
-
-  const handleAddCustomItem = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newItemTitle.trim()) {
-      toast('请输入作业内容');
-      return;
-    }
-    const created: HomeworkTemplateItem = {
-      id: Date.now(),
-      course: newItemCourse || courseNames[0] || '常规课程',
-      title: newItemTitle.trim(),
-      due: newItemDue || undefined,
-      creator: '自定义',
-    };
-    setTemplates(prev => [created, ...prev]);
-    setSelectedIds(prev => new Set(prev).add(created.id));
-    setNewItemTitle('');
-    setNewItemDue('');
-    setShowQuickAdd(false);
-    toast('已添加自定义作业项');
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-fade-in">
       <div className="w-full max-w-2xl bg-[#1d1f24] border-2 border-[#e9e4d8] text-[#e9e4d8] shadow-2xl rounded-xs flex flex-col max-h-[90vh]">
@@ -259,11 +192,11 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
             <div className="flex items-center gap-2">
               <DownloadCloud className="w-5 h-5 text-[#6b7cff]" />
               <h3 className="font-editorial text-lg sm:text-xl font-bold tracking-wide">
-                自由勾选导入作业
+                官方作业清单同步
               </h3>
             </div>
             <div className="text-[9.5px] font-mono tracking-[2.5px] text-[#8f8b80] mt-0.5">
-              CHECKLIST IMPORT · 自由勾选 · 智能覆盖去重
+              OFFICIAL ASSIGNMENT POOL · 自由勾选 · 智能覆盖去重
             </div>
           </div>
           <button
@@ -300,78 +233,28 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
 
             <button
               type="button"
-              onClick={() => setShowQuickAdd(prev => !prev)}
-              className="px-2.5 py-1.5 bg-[#252834] hover:bg-[#303444] text-[#e9e4d8] border border-[#3a3e50] text-xs rounded font-medium flex items-center gap-1 cursor-pointer transition-colors shrink-0"
-              title="添加新作业项到清单"
-            >
-              <Plus className="w-3.5 h-3.5 text-[#6b7cff]" />
-              <span className="hidden sm:inline">加一项</span>
-            </button>
-
-            <button
-              type="button"
               onClick={handleResetPresets}
               className="px-2.5 py-1.5 bg-[#252834] hover:bg-[#303444] text-[#8f8b80] hover:text-[#e9e4d8] border border-[#3a3e50] text-xs rounded flex items-center gap-1 cursor-pointer transition-colors shrink-0"
-              title="重置并重新载入推荐示例"
+              title="重新从服务器拉取最新官方作业池"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">重置示例</span>
+              <span className="hidden sm:inline">刷新作业池</span>
             </button>
           </div>
 
-          {/* Quick inline custom item adder */}
-          {showQuickAdd && (
-            <form onSubmit={handleAddCustomItem} className="p-2.5 bg-[#22252c] border border-[#6b7cff]/40 rounded grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs">
-              <div className="sm:col-span-4">
-                <input
-                  type="text"
-                  value={newItemCourse}
-                  onChange={e => setNewItemCourse(e.target.value)}
-                  placeholder="课程名称"
-                  className="w-full bg-[#181a1f] border border-[#33363d] focus:border-[#6b7cff] px-2 py-1 rounded text-[#e9e4d8] outline-none text-xs"
-                />
-              </div>
-              <div className="sm:col-span-5">
-                <input
-                  type="text"
-                  value={newItemTitle}
-                  onChange={e => setNewItemTitle(e.target.value)}
-                  placeholder="作业内容"
-                  className="w-full bg-[#181a1f] border border-[#33363d] focus:border-[#6b7cff] px-2 py-1 rounded text-[#e9e4d8] outline-none text-xs"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <input
-                  type="date"
-                  value={newItemDue}
-                  onChange={e => setNewItemDue(e.target.value)}
-                  className="w-full bg-[#181a1f] border border-[#33363d] focus:border-[#6b7cff] px-1 py-1 rounded text-[#e9e4d8] outline-none text-xs"
-                />
-              </div>
-              <div className="sm:col-span-1 flex items-center justify-end">
-                <button
-                  type="submit"
-                  className="w-full py-1 bg-[#6b7cff] hover:bg-[#5868e6] text-white font-bold rounded cursor-pointer transition-colors text-xs text-center"
-                >
-                  添加
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* Course filter pills & Select all toggle */}
-          <div className="flex items-center justify-between text-xs pt-1">
-            <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 no-scrollbar max-w-[70%]">
+          {/* Course filter tags & Select all toggle */}
+          <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 text-xs">
+            <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
               <button
                 type="button"
                 onClick={() => setSelectedCourseFilter('all')}
-                className={`px-2 py-0.5 rounded text-[11px] font-mono cursor-pointer transition-colors shrink-0 ${
+                className={`px-2 py-0.5 rounded text-[11px] cursor-pointer transition-colors shrink-0 ${
                   selectedCourseFilter === 'all'
                     ? 'bg-[#e9e4d8] text-[#1d1f24] font-bold'
                     : 'bg-[#22252c] text-[#8f8b80] hover:text-[#e9e4d8]'
                 }`}
               >
-                全部
+                全部课程
               </button>
               {courseNames.map(c => (
                 <button
@@ -392,7 +275,7 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
             <button
               type="button"
               onClick={handleSelectAllFiltered}
-              className="text-xs text-[#8f8b80] hover:text-[#e9e4d8] cursor-pointer flex items-center gap-1 shrink-0 font-medium"
+              className="text-xs text-[#8f8b80] hover:text-[#e9e4d8] cursor-pointer flex items-center gap-1 shrink-0 font-medium select-none"
             >
               {filteredTemplates.length > 0 &&
               filteredTemplates.every(t => selectedIds.has(t.id)) ? (
@@ -415,18 +298,18 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
           {loading ? (
             <div className="py-12 flex flex-col items-center justify-center text-xs text-[#8f8b80] space-y-2">
               <Loader2 className="w-5 h-5 animate-spin text-[#6b7cff]" />
-              <span>正在获取作业列表...</span>
+              <span>正在获取官方作业列表...</span>
             </div>
           ) : filteredTemplates.length === 0 ? (
             <div className="py-12 text-center text-xs text-[#8f8b80] space-y-2">
               <AlertCircle className="w-5 h-5 text-[#8f8b80] mx-auto opacity-50" />
-              <div>未找到匹配的作业项</div>
+              <div>未找到匹配的官方作业项</div>
               <button
                 type="button"
                 onClick={handleResetPresets}
                 className="text-[#6b7cff] hover:underline cursor-pointer"
               >
-                点击载入系统推荐作业示例
+                点击重新从官方作业池加载
               </button>
             </div>
           ) : (
@@ -469,12 +352,12 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
                         {existing ? (
                           <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/15 text-amber-300 border border-amber-500/40 rounded font-mono font-bold flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                            已存在 · 勾选将覆盖
+                            已存在 · 勾选将覆盖更新
                           </span>
                         ) : (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 rounded font-mono font-bold flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                            新作业
+                          <span className="text-[10px] px-1.5 py-0.5 bg-slate-700/40 text-slate-300 border border-slate-600/50 rounded font-mono font-bold flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                            未导入
                           </span>
                         )}
 
@@ -490,24 +373,12 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
                         {item.title}
                       </div>
 
-                      {item.creator && item.creator !== '系统' && (
+                      {item.creator && (
                         <div className="text-[10px] font-mono text-[#63605a] mt-1">
-                          来源: {item.creator}
+                          发布者: {item.creator}
                         </div>
                       )}
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={e => {
-                        e.stopPropagation();
-                        handleDeleteItem(item.id, item.title);
-                      }}
-                      className="text-[#63605a] hover:text-[#ff6b57] transition-colors p-1 cursor-pointer shrink-0"
-                      title="从列表中移除"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
                   </div>
                 );
               })}
@@ -518,39 +389,45 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
         {/* Footer Summary & Action Buttons */}
         <div className="border-t-2 border-[#e9e4d8] p-3 sm:p-4 bg-[#24262c] flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="text-xs text-[#8f8b80] flex items-center gap-2 flex-wrap">
-            <span className="font-mono">
-              已勾选 <strong className="text-[#e9e4d8] text-sm">{stats.totalSelected}</strong> 项
+            <span>
+              已选 <strong className="text-[#e9e4d8]">{stats.totalSelected}</strong> 项
             </span>
-            <span className="text-[11px] px-2 py-0.5 bg-[#1a1c22] border border-[#343742] rounded font-mono">
-              新增 {stats.newCount} 项 ｜ 覆盖更新 {stats.updatedCount} 项
+            <span>·</span>
+            <span>
+              新增 <strong className="text-emerald-400">{stats.newCount}</strong>
+            </span>
+            <span>·</span>
+            <span>
+              覆盖更新 <strong className="text-amber-400">{stats.updatedCount}</strong>
+            </span>
+            <span className="text-[11px] text-[#63605a] hidden sm:inline">
+              （更新将保留您已完成的打勾状态）
             </span>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={onClose}
-              disabled={importing}
-              className="px-4 py-2 border border-[#444854] hover:bg-[#33363f] text-[#e9e4d8] text-xs font-bold rounded cursor-pointer transition-colors"
+              className="flex-1 sm:flex-initial px-4 py-1.5 border border-[#444] hover:bg-[#333] text-[#e9e4d8] text-xs rounded cursor-pointer transition-colors"
             >
               取消
             </button>
-
             <button
               type="button"
-              onClick={handleImport}
               disabled={importing || stats.totalSelected === 0}
-              className="px-5 py-2 bg-[#6b7cff] hover:bg-[#5868e6] text-white text-xs font-bold rounded flex items-center gap-2 cursor-pointer shadow-md transition-all disabled:opacity-40"
+              onClick={handleImport}
+              className="flex-1 sm:flex-initial px-5 py-1.5 bg-[#6b7cff] hover:bg-[#5868e6] disabled:opacity-40 text-white font-bold text-xs rounded transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
             >
               {importing ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>正在存入云端...</span>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>正在同步导入...</span>
                 </>
               ) : (
                 <>
-                  <Check className="w-4 h-4" />
-                  <span>确认导入选中的 {stats.totalSelected} 项作业</span>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>导入选中作业 ({stats.totalSelected})</span>
                 </>
               )}
             </button>

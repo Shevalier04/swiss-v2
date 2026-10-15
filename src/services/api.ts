@@ -321,7 +321,7 @@ export const api = {
     await request(`/assignments?id=${id}`, { method: 'DELETE' });
   },
 
-  async batchAddHomework(items: { course: string; title: string; due?: string }[], replace = false): Promise<Homework[]> {
+  async batchAddHomework(items: { course: string; title: string; due?: string; done?: boolean }[], replace = false): Promise<Homework[]> {
     try {
       const res = await request<any>('/assignments', {
         method: 'POST',
@@ -330,6 +330,7 @@ export const api = {
             course_name: it.course,
             title: it.title,
             deadline: it.due,
+            completed: it.done,
           })),
           replace,
         }),
@@ -363,7 +364,7 @@ export const api = {
         course: it.course,
         title: it.title,
         due: it.due || '',
-        done: false,
+        done: Boolean(it.done),
       }));
       const combined = [...current, ...added];
       try {
@@ -410,12 +411,29 @@ export const api = {
       return res.template;
     } catch (e: any) {
       const current = await this.getConsoleHomeworkTemplates();
+      const cName = (item.course || '').trim().toLowerCase();
+      const tName = (item.title || '').trim().toLowerCase();
+      const existingIdx = current.findIndex(it =>
+        (it.course || '').trim().toLowerCase() === cName &&
+        (it.title || '').trim().toLowerCase() === tName
+      );
+      if (existingIdx !== -1) {
+        current[existingIdx] = {
+          ...current[existingIdx],
+          due: item.due,
+        };
+        try {
+          localStorage.setItem('cs_console_hw_pool', JSON.stringify(current));
+        } catch (err) {}
+        return current[existingIdx];
+      }
+
       const newItem = {
         id: Date.now(),
         course: item.course || '其他',
         title: item.title,
         due: item.due,
-        creator: '本地管理员',
+        creator: '系统管理员',
       };
       const updated = [...current, newItem];
       try {
@@ -423,6 +441,16 @@ export const api = {
       } catch (err) {}
       return newItem;
     }
+  },
+
+  async pushHomeworkToAllStudents(item: { course: string; title: string; due?: string }): Promise<string> {
+    const safeCourse = (item.course || '其他').trim();
+    const safeTitle = (item.title || '').trim();
+    const safeDue = (item.due || '').trim();
+    const cmd = `hw push ${safeCourse}|${safeTitle}${safeDue ? `|${safeDue}` : ''}`;
+    const res = await this.runTerminalCommand(cmd);
+    const textResult = res.lines?.map(l => l.text).join('; ') || '已全员推送作业';
+    return textResult;
   },
 
   async deleteConsoleHomeworkTemplate(id: number): Promise<void> {
@@ -608,5 +636,15 @@ export const api = {
         ]
       };
     }
+  },
+
+  /**
+   * Gemini 3.5 语音转录接口 (model: gemini-3.5-transcribe)
+   */
+  async transcribeAudio(audioBase64: string, mimeType: string = 'audio/webm', prompt?: string): Promise<{ text: string }> {
+    return await request<{ text: string }>('/ai/transcribe', {
+      method: 'POST',
+      body: JSON.stringify({ audio: audioBase64, mimeType, prompt }),
+    });
   },
 };

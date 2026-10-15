@@ -261,6 +261,23 @@ export const TodayTab: React.FC<TodayTabProps> = ({
         </div>
       </div>
 
+      {/* Top Weather & Campus Briefing Banner */}
+      <div className="bg-[#21242b] border border-[#363a46] px-3.5 py-2.5 rounded text-xs text-[#d8d4c8] flex items-center justify-between shadow-xs animate-editorial-up">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-amber-400 font-bold text-sm">☀ 26°C 晴</span>
+          <span className="text-[#454854] hidden sm:inline">|</span>
+          <span className="text-[#a8a399]">未来两小时预计无雨，放心出门上课吧</span>
+        </div>
+        {!previewTomorrow && tomorrowCourses.length > 0 && (
+          <button
+            onClick={() => setPreviewTomorrow(true)}
+            className="text-[#6b7cff] hover:text-[#8ea4ff] font-medium text-[11px] cursor-pointer flex items-center gap-0.5 shrink-0 ml-2 transition-colors"
+          >
+            <span>提前看明日 ›</span>
+          </button>
+        )}
+      </div>
+
       {/* Preview Toggle Banner if Previewing Tomorrow */}
       {previewTomorrow && (
         <div className="bg-[#1b2234] border border-[#6b7cff] p-3 rounded flex items-center justify-between text-xs text-[#8ea4ff] shadow-sm">
@@ -706,19 +723,6 @@ export const TodayTab: React.FC<TodayTabProps> = ({
           })}
         </div>
       )}
-
-      {/* Weather Note */}
-      <div className="mt-6 pt-3 border-t border-[#33363d] text-xs text-[#8f8b80] tracking-wide flex items-center justify-between">
-        <span>☀ 26°C 晴 —— 未来两小时预计无雨，放心出门上课吧</span>
-        {!previewTomorrow && tomorrowCourses.length > 0 && (
-          <button
-            onClick={() => setPreviewTomorrow(true)}
-            className="text-[#6b7cff] hover:underline cursor-pointer"
-          >
-            提前查看明日日程 ›
-          </button>
-        )}
-      </div>
     </div>
   );
 };

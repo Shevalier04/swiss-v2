@@ -11,6 +11,8 @@ import {
   FileUp,
   Database,
   Cloud,
+  Presentation,
+  BookOpen,
 } from 'lucide-react';
 
 interface ProfileTabProps {
@@ -21,6 +23,7 @@ interface ProfileTabProps {
   onLogout: () => void;
   onOpenAdmin: () => void;
   onOpenDataManagement?: () => void;
+  onOpenPresentation?: () => void;
   onSwitchTab: (tab: any) => void;
   onResetTemplate: () => void;
   onExportData: () => void;
@@ -37,6 +40,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   onLogout,
   onOpenAdmin,
   onOpenDataManagement,
+  onOpenPresentation,
   onSwitchTab,
   onResetTemplate,
   onExportData,
@@ -88,6 +92,28 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         >
           退出
         </button>
+      </div>
+
+      {/* Product Manual & PPT Presentation Entry */}
+      <div
+        onClick={onOpenPresentation}
+        className="flex items-center gap-3.5 bg-gradient-to-r from-[#1c1e24] via-[#22252e] to-[#1c1e24] border-2 border-[#6b7cff]/60 p-4 cursor-pointer hover:border-[#6b7cff] transition-all group shadow-lg rounded-sm"
+      >
+        <div className="w-11 h-11 rounded bg-[#6b7cff]/20 text-[#6b7cff] flex items-center justify-center shrink-0 border border-[#6b7cff]/40 group-hover:scale-105 transition-transform">
+          <Presentation className="w-6 h-6" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-sm text-[#e9e4d8] tracking-wide flex items-center gap-2">
+            <span>产品使用说明书 · PPT 演示文稿</span>
+            <span className="text-[10px] px-1.5 py-0.5 bg-[#6b7cff] text-white font-mono font-bold rounded">
+              可下载 .pptx
+            </span>
+          </div>
+          <div className="text-xs text-[#9a978e] mt-1 line-clamp-1">
+            13 页高保真 16:9 幻灯片 · 在线全屏放映 · 一键导出 PPTX / 复制大纲
+          </div>
+        </div>
+        <ChevronRight className="w-4 h-4 text-[#8f8b80] group-hover:text-[#6b7cff] group-hover:translate-x-0.5 transition-all shrink-0" />
       </div>
 
       {/* Admin Terminal Entry */}

@@ -20,6 +20,7 @@ import { AdminTerminalModal } from './components/AdminTerminalModal';
 import { ReminderToast } from './components/ReminderToast';
 import { SundayEveModal } from './components/SundayEveModal';
 import { DataManagementModal } from './components/DataManagementModal';
+import { PresentationModal } from './components/PresentationModal';
 
 import {
   CalendarDays,
@@ -29,6 +30,7 @@ import {
   User as UserIcon,
   Database,
   Cloud,
+  Presentation,
 } from 'lucide-react';
 
 export default function App() {
@@ -53,6 +55,9 @@ export default function App() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [dismissedNoticeId, setDismissedNoticeId] = useState<number | null>(null);
+
+  // Cross-tab Pomodoro Focus Link
+  const [focusTaskTitle, setFocusTaskTitle] = useState<string>('');
 
   // Reminder Settings
   const [remindSettings, setRemindSettings] = useState<RemindSettings>(() => {
@@ -79,6 +84,7 @@ export default function App() {
   const [pdfFileToImport, setPdfFileToImport] = useState<File | null>(null);
   const [isAdminTerminalOpen, setIsAdminTerminalOpen] = useState(false);
   const [isDataManagementOpen, setIsDataManagementOpen] = useState(false);
+  const [isPresentationOpen, setIsPresentationOpen] = useState(false);
 
   // Active floating reminder toast
   const [activeReminderCourse, setActiveReminderCourse] = useState<Course | null>(null);
@@ -364,6 +370,8 @@ export default function App() {
 
     // Identify duplicates by course.trim().toLowerCase() and title.trim().toLowerCase()
     const matchesToDelete: number[] = [];
+    const preservedDoneMap = new Map<string, boolean>();
+
     for (const item of items) {
       const cName = (item.course || '').trim().toLowerCase();
       const tName = (item.title || '').trim().toLowerCase();
@@ -372,7 +380,9 @@ export default function App() {
       );
       if (matchIndex !== -1) {
         updatedCount++;
-        matchesToDelete.push(currentHw[matchIndex].id);
+        const match = currentHw[matchIndex];
+        matchesToDelete.push(match.id);
+        preservedDoneMap.set(`${cName}__${tName}`, Boolean(match.done));
         currentHw.splice(matchIndex, 1);
       } else {
         newCount++;
@@ -386,22 +396,80 @@ export default function App() {
       } catch (e) {}
     }
 
+    // Carry over preserved done status if previously completed
+    const itemsToInsert = items.map(it => {
+      const cName = (it.course || '').trim().toLowerCase();
+      const tName = (it.title || '').trim().toLowerCase();
+      const done = preservedDoneMap.get(`${cName}__${tName}`);
+      return done !== undefined ? { ...it, done } : it;
+    });
+
     try {
-      await api.batchAddHomework(items, false);
+      await api.batchAddHomework(itemsToInsert as any, false);
     } catch (e) {
-      for (const item of items) {
-        await api.addHomework(item);
+      for (const item of itemsToInsert) {
+        await api.addHomework(item as any);
       }
     }
 
     await loadAllUserData();
-    showToast(`已成功导入 ${items.length} 项作业（新增 ${newCount} 项，覆盖更新 ${updatedCount} 项）`);
+    showToast(`已成功同步 ${items.length} 项作业（新增 ${newCount} 项，覆盖更新 ${updatedCount} 项）`);
   };
 
   const handleToggleHw = async (id: number) => {
-    await api.toggleHomework(id);
-    const list = await api.getHomework();
-    setHomework(list);
+    const targetHw = homework.find(h => Number(h.id) === Number(id));
+    if (!targetHw) return;
+    const willBeDone = !targetHw.done;
+
+    // 1. Optimistic instant local update
+    setHomework(prev =>
+      prev.map(h => (Number(h.id) === Number(id) ? { ...h, done: willBeDone } : h))
+    );
+
+    // 2. Bidirectional sync: when homework marked as completed, check matching uncompleted task
+    const hwFormattedTitle = `[${targetHw.course}] ${targetHw.title}`.trim();
+    const matchedTask = willBeDone
+      ? tasks.find(t =>
+          !t.done && (
+            t.title.trim() === hwFormattedTitle ||
+            t.title.trim() === targetHw.title.trim()
+          )
+        )
+      : null;
+
+    if (matchedTask) {
+      // Optimistically update matching task too
+      setTasks(prev =>
+        prev.map(t => (Number(t.id) === Number(matchedTask.id) ? { ...t, done: true } : t))
+      );
+      try {
+        await Promise.all([
+          api.toggleHomework(id),
+          api.toggleTask(matchedTask.id),
+        ]);
+        const [freshHw, freshTasks] = await Promise.all([
+          api.getHomework(),
+          api.getTasks(),
+        ]);
+        setHomework(freshHw);
+        setTasks(freshTasks);
+        showToast(`已同步完成对应待办任务`);
+      } catch (e: any) {
+        await loadAllUserData();
+        showToast('更新状态失败，请重试');
+      }
+    } else {
+      try {
+        await api.toggleHomework(id);
+        const list = await api.getHomework();
+        setHomework(list);
+      } catch (e: any) {
+        setHomework(prev =>
+          prev.map(h => (Number(h.id) === Number(id) ? { ...h, done: targetHw.done } : h))
+        );
+        showToast('更新作业状态失败，请重试');
+      }
+    }
   };
 
   const handleDeleteHw = async (id: number) => {
@@ -417,15 +485,83 @@ export default function App() {
   };
 
   const handleAddTask = async (title: string) => {
-    await api.addTask(title);
-    const list = await api.getTasks();
-    setTasks(list);
+    const tempId = Date.now();
+    const optimisticTask: TaskItem = {
+      id: tempId,
+      title: title.trim(),
+      done: false,
+      created_at: new Date().toISOString(),
+    };
+    setTasks(prev => [optimisticTask, ...prev]);
+
+    try {
+      await api.addTask(title.trim());
+      const list = await api.getTasks();
+      setTasks(list);
+    } catch (err: any) {
+      setTasks(prev => prev.filter(t => t.id !== tempId));
+      throw err;
+    }
   };
 
   const handleToggleTask = async (id: number) => {
-    await api.toggleTask(id);
-    const list = await api.getTasks();
-    setTasks(list);
+    const target = tasks.find(t => Number(t.id) === Number(id));
+    if (!target) return;
+    const willBeDone = !target.done;
+
+    // 1. Optimistic instant local update
+    setTasks(prev =>
+      prev.map(t => (Number(t.id) === Number(id) ? { ...t, done: willBeDone } : t))
+    );
+
+    // 2. Bidirectional sync: when task marked as completed, check matching uncompleted homework
+    const matchedHw = willBeDone
+      ? homework.find(h =>
+          !h.done && (
+            `[${h.course}] ${h.title}`.trim() === target.title.trim() ||
+            h.title.trim() === target.title.trim()
+          )
+        )
+      : null;
+
+    if (matchedHw) {
+      // Optimistically update matching homework too
+      setHomework(prev =>
+        prev.map(h => (Number(h.id) === Number(matchedHw.id) ? { ...h, done: true } : h))
+      );
+      try {
+        await Promise.all([
+          api.toggleTask(id),
+          api.toggleHomework(matchedHw.id),
+        ]);
+        const [freshTasks, freshHw] = await Promise.all([
+          api.getTasks(),
+          api.getHomework(),
+        ]);
+        setTasks(freshTasks);
+        setHomework(freshHw);
+        showToast(`已同步完成对应作业：${matchedHw.title}`);
+      } catch (err: any) {
+        await loadAllUserData();
+        showToast('更新状态失败，请重试');
+      }
+    } else {
+      try {
+        await api.toggleTask(id);
+        const list = await api.getTasks();
+        setTasks(list);
+      } catch (e: any) {
+        setTasks(prev =>
+          prev.map(t => (Number(t.id) === Number(id) ? { ...t, done: target.done } : t))
+        );
+        showToast('更新任务状态失败，请重试');
+      }
+    }
+  };
+
+  const handleJumpToFocusTask = (taskTitle: string) => {
+    setFocusTaskTitle(taskTitle);
+    setActiveTab('tasks');
   };
 
   const handleDeleteTask = async (id: number) => {
@@ -582,14 +718,24 @@ export default function App() {
               <span className="text-[#45474e]">·</span>
               <span>{courses.length}课 / {homework.length}作业 / {tasks.length}任务</span>
             </div>
-            <button
-              onClick={() => setIsDataManagementOpen(true)}
-              className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold text-[#6b7cff] hover:text-white hover:bg-[#6b7cff]/30 transition-all cursor-pointer border border-[#6b7cff]/30 active:scale-95"
-              title="数据管理与一键导入"
-            >
-              <Database className="w-2.5 h-2.5" />
-              <span>数据管理</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setIsPresentationOpen(true)}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold text-[#e9e4d8] bg-[#22242a] hover:bg-[#2c2f38] hover:text-[#8ea4ff] transition-all cursor-pointer border border-[#3c404c] active:scale-95 shadow-sm"
+                title="产品使用说明书 (PPT 演示文稿与下载)"
+              >
+                <Presentation className="w-2.5 h-2.5 text-[#6b7cff]" />
+                <span>使用说明(PPT)</span>
+              </button>
+              <button
+                onClick={() => setIsDataManagementOpen(true)}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold text-[#6b7cff] hover:text-white hover:bg-[#6b7cff]/30 transition-all cursor-pointer border border-[#6b7cff]/30 active:scale-95"
+                title="数据管理与一键导入"
+              >
+                <Database className="w-2.5 h-2.5" />
+                <span>数据管理</span>
+              </button>
+            </div>
           </div>
         )}
 
@@ -643,10 +789,13 @@ export default function App() {
               user={currentUser}
               courses={courses}
               homework={homework}
+              tasks={tasks}
               onAdd={handleAddHw}
               onBatchAdd={handleBatchAddHw}
               onToggle={handleToggleHw}
               onDelete={handleDeleteHw}
+              onAddTask={handleAddTask}
+              onJumpToFocusTask={handleJumpToFocusTask}
               onImportPreset={handleImportPresetHw}
               toast={showToast}
             />
@@ -660,6 +809,8 @@ export default function App() {
               onDeleteTask={handleDeleteTask}
               onRefreshTasks={loadAllUserData}
               onImportPresetTasks={handleImportPresetTasks}
+              focusTaskTitle={focusTaskTitle}
+              setFocusTaskTitle={setFocusTaskTitle}
               toast={showToast}
             />
           )}
@@ -673,6 +824,7 @@ export default function App() {
               onLogout={handleLogout}
               onOpenAdmin={() => setIsAdminTerminalOpen(true)}
               onOpenDataManagement={() => setIsDataManagementOpen(true)}
+              onOpenPresentation={() => setIsPresentationOpen(true)}
               onSwitchTab={tab => setActiveTab(tab)}
               onResetTemplate={handleResetTemplate}
               onExportData={handleExportData}
@@ -862,6 +1014,13 @@ export default function App() {
         homework={homework}
         tasks={tasks}
         onRefresh={loadAllUserData}
+        toast={showToast}
+      />
+
+      {/* Product Manual PPT Presentation Modal */}
+      <PresentationModal
+        isOpen={isPresentationOpen}
+        onClose={() => setIsPresentationOpen(false)}
         toast={showToast}
       />
 

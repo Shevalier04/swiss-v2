@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
-import { X, RefreshCw, Terminal as TerminalIcon, Trash2, BookOpen, Plus } from 'lucide-react';
+import { X, RefreshCw, Terminal as TerminalIcon, Trash2, BookOpen, Plus, Send } from 'lucide-react';
 
 interface AdminTerminalModalProps {
   onClose: () => void;
@@ -128,8 +128,7 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
     }
   };
 
-  const handleQuickAddHw = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handlePublishToPool = async () => {
     if (!quickHwTitle.trim()) {
       toast('请输入作业内容');
       return;
@@ -140,17 +139,65 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
         title: quickHwTitle.trim(),
         due: quickHwDue || undefined,
       });
-      toast(`已录入作业库：${quickHwTitle}`);
+      toast(`已发布至官方作业池：${quickHwTitle}`);
       setOutput(prev => [
         ...prev,
-        { text: `[控制台] 已录入作业库：[${quickHwCourse}] ${quickHwTitle}`, type: 'info' },
+        { text: `[官方作业池] 已发布：[${quickHwCourse}] ${quickHwTitle} (供学生自由勾选)`, type: 'info' },
       ]);
       setQuickHwTitle('');
       setQuickHwDue('');
       loadHwPool();
       onRefreshParent();
     } catch (err: any) {
-      toast('录入失败');
+      toast('发布失败：' + (err.message || '请检查权限'));
+    }
+  };
+
+  const handleForcePushAll = async () => {
+    if (!quickHwTitle.trim()) {
+      toast('请输入作业内容');
+      return;
+    }
+    const item = {
+      course: quickHwCourse,
+      title: quickHwTitle.trim(),
+      due: quickHwDue || undefined,
+    };
+    try {
+      // Also register in console pool for future student reference
+      await api.addConsoleHomeworkTemplate(item);
+      const summary = await api.pushHomeworkToAllStudents(item);
+      toast(`已全员强制下发作业：[${item.course}] ${item.title}`);
+      setOutput(prev => [
+        ...prev,
+        { text: `[全员下发] ${summary}`, type: 'info' },
+      ]);
+      setQuickHwTitle('');
+      setQuickHwDue('');
+      loadOverview();
+      loadHwPool();
+      onRefreshParent();
+    } catch (err: any) {
+      toast('全员下发失败：' + (err.message || '请检查权限'));
+      setOutput(prev => [
+        ...prev,
+        { text: `[错误] 全员强制下发失败: ${err.message || err}`, type: 'err' },
+      ]);
+    }
+  };
+
+  const handlePushHwToAll = async (item: { course: string; title: string; due?: string }) => {
+    try {
+      const summary = await api.pushHomeworkToAllStudents(item);
+      toast(`已全员推送作业：[${item.course}] ${item.title}`);
+      setOutput(prev => [
+        ...prev,
+        { text: `[全员推送] ${summary}`, type: 'info' },
+      ]);
+      loadOverview();
+      onRefreshParent();
+    } catch (err: any) {
+      toast('推送失败：' + (err.message || '请检查网络'));
     }
   };
 
@@ -432,7 +479,10 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
           <div className="space-y-3 text-xs">
             {/* Quick Add Form */}
             <form
-              onSubmit={handleQuickAddHw}
+              onSubmit={(e) => {
+                e.preventDefault();
+                handlePublishToPool();
+              }}
               className="bg-[#1b1e26] border border-[#2a2d36] p-2.5 rounded flex items-center gap-2 flex-wrap"
             >
               <select
@@ -461,19 +511,32 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
                 onChange={e => setQuickHwDue(e.target.value)}
                 className="bg-[#12141a] border border-[#33363f] text-[#e9e4d8] text-xs px-2 py-1 rounded outline-none"
               />
-              <button
-                type="submit"
-                className="px-3 py-1 bg-[#4ade80] hover:bg-[#3ecc72] text-[#12141a] font-bold rounded text-xs flex items-center gap-1 cursor-pointer transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>录入作业库</span>
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={handlePublishToPool}
+                  className="px-2.5 py-1 bg-[#4ade80] hover:bg-[#3ecc72] text-[#12141a] font-bold rounded text-xs flex items-center gap-1 cursor-pointer transition-all active:scale-95 shadow-xs"
+                  title="发布至官方作业池，供全班学生在客户端自由勾选导入"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>发布至官方作业池</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleForcePushAll}
+                  className="px-2.5 py-1 bg-[#6b7cff] hover:bg-[#5868e6] text-white font-bold rounded text-xs flex items-center gap-1 cursor-pointer transition-all active:scale-95 shadow-xs"
+                  title="一键全员强制下发该作业至所有学生课表，自动覆盖同名作业并保留已完成状态"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>一键全员强制下发</span>
+                </button>
+              </div>
             </form>
 
             {/* Homework Pool Items */}
             {hwPool.length === 0 ? (
               <div className="py-8 text-center text-[#8f8b80] border border-dashed border-[#2a2d36] rounded">
-                控制台作业库当前为空，可在上方表单录入或使用 hw add 命令
+                官方作业库当前为空，可在上方表单录入或使用 hw add / hw push 命令
               </div>
             ) : (
               <div className="space-y-2">
@@ -495,14 +558,24 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <span className="text-[10px] text-[#63605a] font-mono hidden sm:inline">
                         by {item.creator || 'admin'}
                       </span>
                       <button
+                        type="button"
+                        onClick={() => handlePushHwToAll(item)}
+                        className="px-2 py-0.5 text-[10px] font-bold border border-[#6b7cff]/50 text-[#8ea4ff] hover:bg-[#6b7cff] hover:text-white rounded cursor-pointer flex items-center gap-1 transition-all active:scale-95"
+                        title="一键下发并覆盖更新至全班学生课表"
+                      >
+                        <Send className="w-3 h-3" />
+                        <span>全员推送</span>
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleDeleteHwPoolItem(item.id, item.title)}
                         className="px-2 py-0.5 text-[10px] font-bold border border-[#ff5f57]/50 text-[#ff5f57] hover:bg-[#ff5f57] hover:text-white rounded cursor-pointer flex items-center gap-1 transition-colors"
-                        title="从控制台作业库中删除"
+                        title="从官方作业池中删除"
                       >
                         <Trash2 className="w-3 h-3" />
                         <span>删除</span>
