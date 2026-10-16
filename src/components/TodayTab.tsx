@@ -578,7 +578,7 @@ export const TodayTab: React.FC<TodayTabProps> = ({
 
       {/* Editorial Quotation */}
       <div className="font-editorial italic text-[14.5px] text-[#a8a399] border-l-[3px] border-[#6b7cff] pl-3 py-0.5 leading-relaxed">
-        “ 别急着拍 PPT，拍了你也不会再看 ”
+        “ 既往不恋，当下不杂，未来不迎 ”
       </div>
 
       {/* Timeline Section Title */}

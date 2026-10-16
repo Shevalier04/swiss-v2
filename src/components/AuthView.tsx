@@ -9,8 +9,8 @@ interface AuthViewProps {
 
 export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, toast }) => {
   const [tab, setTab] = useState<'login' | 'register'>('login');
-  const [loginUser, setLoginUser] = useState('2612114501');
-  const [loginPw, setLoginPw] = useState('123456');
+  const [loginUser, setLoginUser] = useState('admin');
+  const [loginPw, setLoginPw] = useState('admin123');
 
   const [regUser, setRegUser] = useState('');
   const [regPw, setRegPw] = useState('');
@@ -114,7 +114,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, toast }) => 
               type="text"
               value={loginUser}
               onChange={e => setLoginUser(e.target.value)}
-              placeholder="学号 (如 2612114501)"
+              placeholder="学号或管理员 (如 admin)"
               className="w-full bg-transparent border-b-2 border-[#e9e4d8] focus:border-[#6b7cff] py-2 px-1 text-base text-[#e9e4d8] font-editorial outline-none transition-colors"
             />
           </div>
@@ -127,7 +127,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, toast }) => 
               type="password"
               value={loginPw}
               onChange={e => setLoginPw(e.target.value)}
-              placeholder="初始密码 123456"
+              placeholder="密码 (如 admin123 或 123456)"
               className="w-full bg-transparent border-b-2 border-[#e9e4d8] focus:border-[#6b7cff] py-2 px-1 text-base text-[#e9e4d8] font-editorial outline-none transition-colors"
             />
           </div>
@@ -141,32 +141,32 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, toast }) => 
           </button>
 
           <div className="text-center text-[#8f8b80] text-xs mt-6 leading-relaxed">
-            学生账号为学号 · 初始密码 <b className="text-[#e9e4d8]">123456</b>
-            <br />
             管理员 <b className="text-[#6b7cff]">admin / admin123</b>
+            <br />
+            学生账号为学号 · 初始密码 <b className="text-[#e9e4d8]">123456</b>
           </div>
 
           <div className="pt-2 flex flex-wrap justify-center gap-1.5 text-[11px]">
             <button
               type="button"
+              onClick={() => { setLoginUser('admin'); setLoginPw('admin123'); }}
+              className="px-2 py-0.5 rounded border border-[#6b7cff]/50 bg-[#6b7cff]/15 text-[#8ea4ff] hover:bg-[#6b7cff] hover:text-white cursor-pointer font-bold"
+            >
+              👑 管理员: admin
+            </button>
+            <button
+              type="button"
               onClick={() => { setLoginUser('2612114501'); setLoginPw('123456'); }}
-              className="px-2 py-0.5 rounded border border-[#33363d] text-[#8f8b80] hover:text-[#e9e4d8] hover:border-[#6b7cff]"
+              className="px-2 py-0.5 rounded border border-[#33363d] text-[#8f8b80] hover:text-[#e9e4d8] hover:border-[#6b7cff] cursor-pointer"
             >
               学生1: 姜佳铭
             </button>
             <button
               type="button"
               onClick={() => { setLoginUser('2612114502'); setLoginPw('123456'); }}
-              className="px-2 py-0.5 rounded border border-[#33363d] text-[#8f8b80] hover:text-[#e9e4d8] hover:border-[#6b7cff]"
+              className="px-2 py-0.5 rounded border border-[#33363d] text-[#8f8b80] hover:text-[#e9e4d8] hover:border-[#6b7cff] cursor-pointer"
             >
               学生2: 郑俊源
-            </button>
-            <button
-              type="button"
-              onClick={() => { setLoginUser('admin'); setLoginPw('admin123'); }}
-              className="px-2 py-0.5 rounded border border-[#33363d] text-[#8f8b80] hover:text-[#e9e4d8] hover:border-[#6b7cff]"
-            >
-              管理员
             </button>
           </div>
         </form>

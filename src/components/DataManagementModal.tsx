@@ -316,12 +316,15 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
               <Database className="w-4 h-4" />
             </div>
             <div>
-              <div className="font-editorial text-lg font-extrabold tracking-wide">
-                云端数据管理与一键导入
+              <div className="font-editorial text-lg font-extrabold tracking-wide flex items-center gap-2">
+                <span>云端数据管理中心</span>
+                <span className="text-[10px] px-1.5 py-0.2 bg-[#6b7cff] text-white font-mono font-bold rounded">
+                  仅终端管理员
+                </span>
               </div>
               <div className="text-[10px] font-mono text-[#8f8b80] flex items-center gap-1.5">
                 <Cloud className="w-3 h-3 text-[#4ade80]" />
-                <span>CLOUDFLARE D1 (swiss-db)</span>
+                <span>CLOUDFLARE D1 (swiss-db) · 仅终端管理员可操作</span>
               </div>
             </div>
           </div>

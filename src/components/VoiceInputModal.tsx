@@ -296,7 +296,7 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
   const taskPresets = [
     '精读英语第三单元课文并打卡',
     '复习计算机网络第四章实验',
-    '准备明天下午的开题答辩PPT',
+    '准备明天下午的开题答辩演示文稿',
     '去图书馆归还数据库教材',
   ];
 

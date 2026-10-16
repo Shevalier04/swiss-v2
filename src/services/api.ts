@@ -1,5 +1,6 @@
 import { Course, Homework, TaskItem, User, Notice } from '../types';
 import { SAMPLE_COURSES, SAMPLE_TASKS } from '../utils/sampleData';
+import { resolveDisplayName, saveCustomDisplayName } from '../utils/studentRoster';
 
 const TOKEN_KEY = 'cs_app_token';
 
@@ -65,8 +66,13 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ username, password }),
       });
+      const resolvedName = resolveDisplayName(res.user.username, res.user.name);
+      const user: User = {
+        ...res.user,
+        name: resolvedName,
+      };
       setStoredToken(res.token);
-      return res;
+      return { token: res.token, user };
     } catch (e: any) {
       // 明确的后端业务错误（如 401 密码错误、403 账号禁用、404 账号不存在）直接抛出给用户
       if (e?.isBusinessError || (e?.status && e.status >= 400 && e.status < 500 && !e?.isFallback)) {
@@ -74,7 +80,7 @@ export const api = {
       }
       // 仅在无后端环境/HTML 回退时才允许离线降级
       if (e?.message === 'BACKEND_HTML_FALLBACK' || e?.isFallback) {
-        const name = username === 'admin' ? '系统管理员' : username;
+        const name = resolveDisplayName(username);
         const user: User = {
           username,
           name,
@@ -93,14 +99,19 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ username, password, withTemplate }),
       });
+      const resolvedName = resolveDisplayName(res.user.username, res.user.name);
+      const user: User = {
+        ...res.user,
+        name: resolvedName,
+      };
       setStoredToken(res.token);
-      return res;
+      return { token: res.token, user };
     } catch (e: any) {
       if (e?.isBusinessError || (e?.status && e.status >= 400 && e.status < 500 && !e?.isFallback)) {
         throw e;
       }
       if (e?.message === 'BACKEND_HTML_FALLBACK' || e?.isFallback) {
-        const name = username === 'admin' ? '系统管理员' : username;
+        const name = resolveDisplayName(username);
         const user: User = {
           username,
           name,
@@ -117,14 +128,27 @@ export const api = {
     const token = getStoredToken();
     if (!token) throw new Error('未登录');
     try {
-      return await request<User>('/auth/me');
+      const remoteUser = await request<User>('/auth/me');
+      return {
+        ...remoteUser,
+        name: resolveDisplayName(remoteUser.username, remoteUser.name),
+      };
     } catch (e: any) {
       return {
         username: token,
-        name: token === 'admin' ? '系统管理员' : token,
+        name: resolveDisplayName(token),
         role: token === 'admin' ? 'admin' : 'user',
       };
     }
+  },
+
+  updateProfileName(username: string, newName: string): User {
+    saveCustomDisplayName(username, newName);
+    return {
+      username,
+      name: newName.trim(),
+      role: username === 'admin' ? 'admin' : 'user',
+    };
   },
 
   logout() {
@@ -443,9 +467,9 @@ export const api = {
   },
 
   /**
-   * 将当前学号（如 2612114501）现有作业同步并写入官方作业池
+   * 将当前管理员账号（如 admin）现有作业同步并写入官方作业池
    */
-  async syncUserHomeworkToConsolePool(username = '2612114501'): Promise<{ success: boolean; message: string; templates: any[] }> {
+  async syncUserHomeworkToConsolePool(username = 'admin'): Promise<{ success: boolean; message: string; templates: any[] }> {
     try {
       const res = await request<{ success: boolean; message: string; templates: any[] }>('/homework/console-pool', {
         method: 'POST',
@@ -465,7 +489,7 @@ export const api = {
       const updated = await this.getConsoleHomeworkTemplates();
       return {
         success: true,
-        message: `已将学号 [${username}] 的 ${userHw.length} 项作业同步至本地官方池`,
+        message: `已将管理员 [${username}] 的 ${userHw.length} 项作业同步至官方池`,
         templates: updated,
       };
     }

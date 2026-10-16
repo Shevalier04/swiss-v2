@@ -201,10 +201,10 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
     }
   };
 
-  const handleSyncStudentHw = async (studentId = '2612114501') => {
+  const handleSyncStudentHw = async (studentId = 'admin') => {
     try {
       const res = await api.syncUserHomeworkToConsolePool(studentId);
-      toast(res.message || `已同步学号 [${studentId}] 的作业到作业池`);
+      toast(res.message || `已同步管理员 [${studentId}] 的作业到作业池`);
       setOutput(prev => [
         ...prev,
         { text: `[官方作业池] ${res.message}`, type: 'info' },
@@ -212,7 +212,7 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
       loadHwPool();
       onRefreshParent();
     } catch (err: any) {
-      toast('同步学号作业失败：' + (err.message || '未知错误'));
+      toast('同步作业失败：' + (err.message || '未知错误'));
       setOutput(prev => [
         ...prev,
         { text: `[错误] 同步学号 ${studentId} 作业失败: ${err.message}`, type: 'err' },
@@ -441,12 +441,12 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
               <>
                 <button
                   type="button"
-                  onClick={() => handleSyncStudentHw('2612114501')}
+                  onClick={() => handleSyncStudentHw('admin')}
                   className="flex items-center gap-1 text-[11px] text-[#4ade80] hover:underline cursor-pointer px-1.5 py-0.5 rounded bg-[#4ade80]/10 border border-[#4ade80]/30"
-                  title="将学号 2612114501 现有作业去重存入官方作业池"
+                  title="将管理员账号 (admin) 现有作业去重存入官方作业池"
                 >
                   <Download className="w-3 h-3" />
-                  同步2612114501作业
+                  同步管理员作业
                 </button>
                 {hwPool.length > 0 && (
                   <button

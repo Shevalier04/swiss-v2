@@ -68,7 +68,7 @@ export const WidgetTab: React.FC<WidgetTabProps> = ({
   const [pipContainer, setPipContainer] = useState<HTMLElement | null>(null);
   const pipWindowRef = useRef<Window | null>(null);
 
-  const username = user?.username || '2612114501';
+  const username = user?.username || 'admin';
   const studentName = user?.name || username;
   const syncStorageKey = `cs_cal_sync_${username}`;
 

@@ -282,11 +282,20 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
           <button
             type="button"
             onClick={() => setShowImportModal(true)}
-            className="px-2.5 py-1 bg-[#252834] hover:bg-[#303444] text-[#e9e4d8] border border-[#33363d] rounded text-xs font-medium flex items-center gap-1 transition-all cursor-pointer shadow-xs active:scale-95"
-            title="自由勾选并导入作业，支持自动覆盖更新"
+            className={`px-2.5 py-1 text-xs rounded transition-all cursor-pointer shadow-xs active:scale-95 flex items-center gap-1.5 ${
+              user?.role === 'admin'
+                ? 'bg-[#6b7cff]/20 hover:bg-[#6b7cff] text-[#6b7cff] hover:text-white border border-[#6b7cff] font-bold'
+                : 'bg-[#252834] hover:bg-[#303444] text-[#e9e4d8] border border-[#33363d] font-medium'
+            }`}
+            title={user?.role === 'admin' ? '官方作业池同步与全员下发 (管理员权限)' : '从官方作业池自主勾选同步到个人作业'}
           >
             <DownloadCloud className="w-3.5 h-3.5 text-[#6b7cff]" />
-            <span>官方作业同步</span>
+            <span>{user?.role === 'admin' ? '官方作业同步与下发' : '官方作业同步'}</span>
+            {user?.role === 'admin' && (
+              <span className="text-[9.5px] px-1 py-0.2 bg-[#6b7cff] text-white font-mono rounded">
+                ADMIN
+              </span>
+            )}
           </button>
 
           <div className="font-editorial italic text-xs text-[#8f8b80] hidden sm:block ml-1">

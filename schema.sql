@@ -84,11 +84,11 @@ CREATE INDEX IF NOT EXISTS idx_hw_pool_course ON homework_pool(course, created_a
 -- D1 控制台常用实用 SQL 脚本（复制到 Cloudflare D1 Console 即可执行）：
 -- ==============================================================================
 
--- 【脚本 1】将学号 2612114501 的现有作业一键转存为全局官方作业池（去重写入）：
+-- 【脚本 1】将管理员账号 (admin) 的现有作业一键转存为全局官方作业池（去重写入）：
 -- INSERT INTO homework_pool (course, title, due, creator)
--- SELECT course_name, title, deadline, '2612114501'
+-- SELECT course_name, title, deadline, 'admin'
 -- FROM assignments
--- WHERE username = '2612114501'
+-- WHERE username = 'admin'
 --   AND (course_name || ':::' || title) NOT IN (SELECT course || ':::' || title FROM homework_pool);
 
 -- 【脚本 2】将官方作业池的全部作业一键广播推送到所有学生的个人作业表（assignments）：

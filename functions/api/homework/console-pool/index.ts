@@ -131,24 +131,24 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
     let list = results || [];
 
-    // 若作业池目前为空，尝试自动将 2612114501 的真实作业作为初始作业池填充
+    // 若作业池目前为空，尝试自动将 admin 的真实作业作为初始作业池填充
     if (list.length === 0) {
       try {
-        const studentAssignments = await env.DB.prepare(
+        const adminAssignments = await env.DB.prepare(
           `SELECT course_name, title, deadline
            FROM assignments
-           WHERE username = '2612114501'
+           WHERE username = 'admin'
            ORDER BY id ASC`
         ).all<{ course_name: string; title: string; deadline?: string }>();
 
-        if (studentAssignments.results && studentAssignments.results.length > 0) {
+        if (adminAssignments.results && adminAssignments.results.length > 0) {
           const insertStatements: D1PreparedStatement[] = [];
-          for (const item of studentAssignments.results) {
+          for (const item of adminAssignments.results) {
             if (!item.title?.trim()) continue;
             insertStatements.push(
               env.DB.prepare(
                 `INSERT INTO homework_pool (course, title, due, creator)
-                 VALUES (?, ?, ?, '2612114501')`
+                 VALUES (?, ?, ?, 'admin')`
               ).bind(item.course_name || '常规课程', item.title.trim(), item.deadline || '')
             );
           }
@@ -226,8 +226,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       // 查找 D1 中所有不同的学号/用户
       const userRes = await env.DB.prepare('SELECT DISTINCT username FROM assignments').all<{ username: string }>();
       let users = (userRes.results || []).map(u => u.username).filter(Boolean);
-      if (!users.includes('2612114501')) {
-        users.push('2612114501');
+      if (!users.includes('admin')) {
+        users.push('admin');
       }
 
       const statements: D1PreparedStatement[] = [];
@@ -264,9 +264,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       });
     }
 
-    // 2. 将指定学号（如 2612114501）现有作业同步至官方池
+    // 2. 将指定管理员账号（如 admin）现有作业同步至官方池
     if (body.action === 'sync_user') {
-      const sourceUser = body.username || '2612114501';
+      const sourceUser = body.username || 'admin';
       const userAssignments = await env.DB.prepare(
         `SELECT course_name, title, deadline
          FROM assignments

@@ -14,7 +14,6 @@ import {
   Loader2,
   Database,
   Radio,
-  Copy,
   ChevronDown,
   ChevronUp,
   Trash2,
@@ -22,6 +21,7 @@ import {
   Code,
   CheckCircle2,
   Sparkles,
+  ShieldCheck,
 } from 'lucide-react';
 
 export interface HomeworkTemplateItem {
@@ -58,33 +58,33 @@ CREATE TABLE IF NOT EXISTS homework_pool (
 CREATE INDEX IF NOT EXISTS idx_homework_pool_course ON homework_pool(course);`,
   },
   {
-    id: 'sync_2612114501',
-    title: '2. 将学号 2612114501 作业提取为全局官方作业池',
-    desc: '将已有的 2612114501 作业转入官方池，供全班学生自主勾选同步',
-    sql: `-- 2. 将学号 2612114501 的作业提取写入官方作业池（去重）
+    id: 'sync_admin',
+    title: '2. 将管理员账号 (admin) 作业提取为全局官方作业池',
+    desc: '将已有的管理员作业转入官方池，供全班学生自主勾选同步',
+    sql: `-- 2. 将管理员账号 (admin) 的作业提取写入官方作业池（去重）
 INSERT INTO homework_pool (course, title, due, creator)
-SELECT course, title, due, '2612114501'
+SELECT course_name, title, deadline, 'admin'
 FROM assignments
-WHERE username = '2612114501'
-  AND (course, title) NOT IN (SELECT course, title FROM homework_pool);`,
+WHERE username = 'admin'
+  AND (course_name, title) NOT IN (SELECT course, title FROM homework_pool);`,
   },
   {
     id: 'broadcast_all',
     title: '3. 从官方作业池一键广播下发给 D1 所有学生',
     desc: '向 assignments 表中所有学生批量复制当前官方池全部作业',
     sql: `-- 3. 广播下发：向所有已知学生的 assignments 表注入官方作业池作业
-INSERT INTO assignments (username, course, title, due, done)
+INSERT INTO assignments (username, course_name, title, deadline, completed)
 SELECT DISTINCT u.username, p.course, p.title, p.due, 0
 FROM (
   SELECT DISTINCT username FROM assignments WHERE username IS NOT NULL AND username != ''
   UNION
-  SELECT '2612114501'
+  SELECT 'admin'
 ) u
 CROSS JOIN homework_pool p
 WHERE NOT EXISTS (
   SELECT 1 FROM assignments ex
   WHERE ex.username = u.username
-    AND ex.course = p.course
+    AND ex.course_name = p.course
     AND ex.title = p.title
 );`,
   },
@@ -117,6 +117,8 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
   onClose,
   toast,
 }) => {
+  const isAdmin = user?.role === 'admin' || user?.username === 'admin';
+
   const [templates, setTemplates] = useState<HomeworkTemplateItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -124,7 +126,7 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCourseFilter, setSelectedCourseFilter] = useState<string>('all');
 
-  // D1 Management Panel & SQL drawer state
+  // D1 Management Panel & SQL drawer state (Admin only)
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showSqlDrawer, setShowSqlDrawer] = useState(false);
   const [activeSqlTab, setActiveSqlTab] = useState(0);
@@ -246,12 +248,16 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
     }
   };
 
-  // 1. One-click sync user 2612114501 homework to D1 official pool
-  const handleSyncUserToPool = async (targetUser = '2612114501') => {
+  // 1. One-click sync admin homework to D1 official pool (Admin only)
+  const handleSyncAdminToPool = async () => {
+    if (!isAdmin) {
+      toast('仅管理员可执行作业下发与转存');
+      return;
+    }
     setAdminOperating(true);
     try {
-      const res = await api.syncUserHomeworkToConsolePool(targetUser);
-      toast(res.message || `已将学号 [${targetUser}] 作业同步至 D1 全局官方池`);
+      const res = await api.syncUserHomeworkToConsolePool('admin');
+      toast(res.message || '已成功将管理员作业同步存入 D1 全局官方作业池');
       await loadTemplates();
     } catch (e: any) {
       toast(`同步失败: ${e.message}`);
@@ -260,9 +266,13 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
     }
   };
 
-  // 2. Broadcast push official pool to all students
+  // 2. Broadcast push official pool to all students (Admin only)
   const handleBroadcastPushToAll = async () => {
-    if (!window.confirm('确定要将当前官方作业池中的作业一键推送下发给所有学生吗？')) {
+    if (!isAdmin) {
+      toast('仅管理员账号可操作全员下发作业');
+      return;
+    }
+    if (!window.confirm('确定要将当前官方作业池中的作业一键下发推送给所有学生吗？')) {
       return;
     }
     setAdminOperating(true);
@@ -276,8 +286,12 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
     }
   };
 
-  // 3. Clear official pool
+  // 3. Clear official pool (Admin only)
   const handleClearPool = async () => {
+    if (!isAdmin) {
+      toast('仅管理员可清空官方作业池');
+      return;
+    }
     if (!window.confirm('确定要清空官方作业池吗？清空后池内数据将为空白。')) {
       return;
     }
@@ -291,6 +305,24 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
       toast(`清空失败: ${e.message}`);
     } finally {
       setAdminOperating(false);
+    }
+  };
+
+  // 4. Delete single item from pool (Admin only)
+  const handleDeletePoolItem = async (id: number) => {
+    if (!isAdmin) return;
+    if (!window.confirm('确定要从官方作业池移除此项作业吗？')) return;
+    try {
+      await api.deleteConsoleHomeworkTemplate(id);
+      setTemplates(prev => prev.filter(t => t.id !== id));
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      toast('已从官方作业池移除该条目');
+    } catch (e: any) {
+      toast(`删除失败: ${e.message}`);
     }
   };
 
@@ -316,27 +348,35 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#6b7cff]/20 text-[#6b7cff] font-mono font-bold">
                 D1 全局作业池
               </span>
+              {isAdmin && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono font-bold flex items-center gap-1 border border-emerald-500/30">
+                  <ShieldCheck className="w-3 h-3" />
+                  管理员下发权限
+                </span>
+              )}
             </div>
             <div className="text-[9.5px] font-mono tracking-[2px] text-[#8f8b80] mt-0.5">
-              OFFICIAL POOL · 全员同步 · 无示范假数据 · 智能更新
+              OFFICIAL POOL · {isAdmin ? '管理员发布与全员下发' : '全员自主同步 · 无示范假数据'}
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowAdminPanel(!showAdminPanel)}
-              className={`px-2.5 py-1 text-xs rounded border transition-colors flex items-center gap-1 cursor-pointer ${
-                showAdminPanel
-                  ? 'bg-[#6b7cff] text-white border-[#6b7cff]'
-                  : 'bg-[#181a1f] text-[#8f8b80] hover:text-[#e9e4d8] border-[#3a3d46]'
-              }`}
-              title="切换 D1 控制台与 SQL 脚本面板"
-            >
-              <Database className="w-3.5 h-3.5" />
-              <span>D1管理/SQL</span>
-              {showAdminPanel ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setShowAdminPanel(!showAdminPanel)}
+                className={`px-2.5 py-1 text-xs rounded border transition-colors flex items-center gap-1 cursor-pointer ${
+                  showAdminPanel
+                    ? 'bg-[#6b7cff] text-white border-[#6b7cff]'
+                    : 'bg-[#181a1f] text-[#8f8b80] hover:text-[#e9e4d8] border-[#3a3d46]'
+                }`}
+                title="切换 D1 控制台与全员下发管理面板"
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>下发管理/SQL</span>
+                {showAdminPanel ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </button>
+            )}
             <button
               onClick={onClose}
               className="w-8 h-8 border border-[#e9e4d8] hover:bg-[#e9e4d8] hover:text-[#1d1f24] flex items-center justify-center transition-colors cursor-pointer"
@@ -347,13 +387,13 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
           </div>
         </div>
 
-        {/* Collapsible D1 Management & SQL Toolbar */}
-        {showAdminPanel && (
+        {/* Collapsible D1 Management & SQL Toolbar (Only visible to admin) */}
+        {isAdmin && showAdminPanel && (
           <div className="p-3 bg-[#181a20] border-b-2 border-[#33363f] space-y-2.5 animate-fade-in text-xs">
             <div className="flex items-center justify-between">
               <span className="font-bold text-[#e9e4d8] flex items-center gap-1.5">
                 <Terminal className="w-4 h-4 text-[#4ade80]" />
-                Cloudflare D1 全局作业池控制台
+                Cloudflare D1 全局作业池下发控制台
               </span>
               <button
                 type="button"
@@ -365,20 +405,20 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
               </button>
             </div>
 
-            {/* Quick Action Buttons */}
+            {/* Quick Action Buttons for Admin */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <button
                 type="button"
                 disabled={adminOperating}
-                onClick={() => handleSyncUserToPool(user?.username || '2612114501')}
+                onClick={handleSyncAdminToPool}
                 className="p-2 bg-[#232732] hover:bg-[#2b3040] text-left border border-[#3e4456] rounded cursor-pointer transition-all disabled:opacity-50 group"
               >
                 <div className="font-bold text-[#e9e4d8] group-hover:text-[#6b7cff] flex items-center gap-1">
                   <Sparkles className="w-3.5 h-3.5 text-[#ff6b57]" />
-                  <span>转存当前/2612114501作业</span>
+                  <span>转存管理员(admin)作业</span>
                 </div>
                 <div className="text-[10px] text-[#8f8b80] mt-0.5">
-                  将学号作业提取写入 D1 homework_pool 官方池
+                  将管理员账号作业提取写入 D1 homework_pool 官方池
                 </div>
               </button>
 
@@ -393,7 +433,7 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
                   <span>一键广播下发给全员</span>
                 </div>
                 <div className="text-[10px] text-[#8f8b80] mt-0.5">
-                  向 D1 全部学生批量下发官方池中所有作业
+                  向 D1 全部学生批量推送官方池中所有作业
                 </div>
               </button>
 
@@ -408,7 +448,7 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
                   <span>清空官方作业池</span>
                 </div>
                 <div className="text-[10px] text-[#8f8b80] mt-0.5">
-                  清空 D1 homework_pool，保留空白状态
+                  清空 D1 homework_pool，保持空白状态
                 </div>
               </button>
             </div>
@@ -448,13 +488,13 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
                         </>
                       ) : (
                         <>
-                          <Copy className="w-3 h-3 text-[#6b7cff]" />
+                          <Sparkles className="w-3 h-3 text-[#6b7cff]" />
                           <span>一键复制 SQL</span>
                         </>
                       )}
                     </button>
                   </div>
-                  <pre className="text-emerald-400/90 whitespace-pre-wrap leading-relaxed">
+                  <pre className="text-emerald-400 leading-relaxed font-mono whitespace-pre-wrap select-all">
                     {D1_SQL_SCRIPTS[activeSqlTab].sql}
                   </pre>
                 </div>
@@ -463,87 +503,72 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
           </div>
         )}
 
-        {/* Search & Filter Toolbar */}
-        <div className="p-3 bg-[#17191f] border-b border-[#33363f] space-y-2.5">
-          <div className="flex items-center gap-2">
+        {/* Search, Filter & Quick-Select Toolbar */}
+        <div className="p-3 bg-[#1e2026] border-b border-[#33363f] flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 flex-1 min-w-[240px]">
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-[#8f8b80] absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="搜索课程名称或作业标题..."
-                className="w-full bg-[#101216] border border-[#33363d] focus:border-[#6b7cff] rounded py-1.5 pl-8 pr-3 text-xs text-[#e9e4d8] outline-none placeholder:text-[#63605a]"
+                placeholder="搜索课程名称或作业关键词..."
+                className="w-full bg-[#141518] border border-[#3a3d46] rounded py-1.5 pl-8 pr-3 text-xs text-[#e9e4d8] placeholder:text-[#63605a] outline-none focus:border-[#6b7cff]"
               />
+              <Search className="w-3.5 h-3.5 text-[#8f8b80] absolute left-2.5 top-1/2 -translate-y-1/2" />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[#8f8b80] hover:text-[#e9e4d8] text-xs cursor-pointer"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#8f8b80] hover:text-[#e9e4d8] cursor-pointer"
                 >
                   ✕
                 </button>
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={handleResetPresets}
-              className="px-2.5 py-1.5 bg-[#252834] hover:bg-[#303444] text-[#8f8b80] hover:text-[#e9e4d8] border border-[#3a3e50] text-xs rounded flex items-center gap-1 cursor-pointer transition-colors shrink-0"
-              title="重新从服务器拉取最新官方作业池"
+            {/* Course Filter Dropdown */}
+            <select
+              value={selectedCourseFilter}
+              onChange={e => setSelectedCourseFilter(e.target.value)}
+              className="bg-[#141518] border border-[#3a3d46] text-xs text-[#e9e4d8] py-1.5 px-2 rounded outline-none cursor-pointer max-w-[140px]"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">刷新作业池</span>
-            </button>
+              <option value="all">全部课程 ({templates.length})</option>
+              {courseNames.map(c => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
           </div>
 
-          {/* Course filter tags & Select all toggle */}
-          <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 text-xs">
-            <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
-              <button
-                type="button"
-                onClick={() => setSelectedCourseFilter('all')}
-                className={`px-2 py-0.5 rounded text-[11px] cursor-pointer transition-colors shrink-0 ${
-                  selectedCourseFilter === 'all'
-                    ? 'bg-[#e9e4d8] text-[#1d1f24] font-bold'
-                    : 'bg-[#22252c] text-[#8f8b80] hover:text-[#e9e4d8]'
-                }`}
-              >
-                全部课程
-              </button>
-              {courseNames.map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setSelectedCourseFilter(c)}
-                  className={`px-2 py-0.5 rounded text-[11px] cursor-pointer transition-colors shrink-0 ${
-                    selectedCourseFilter === c
-                      ? 'bg-[#6b7cff] text-white font-bold'
-                      : 'bg-[#22252c] text-[#8f8b80] hover:text-[#e9e4d8]'
-                  }`}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handleSelectAllFiltered}
-              className="text-xs text-[#8f8b80] hover:text-[#e9e4d8] cursor-pointer flex items-center gap-1 shrink-0 font-medium select-none"
+              disabled={filteredTemplates.length === 0}
+              className="px-2.5 py-1.5 bg-[#252834] hover:bg-[#303444] text-[#e9e4d8] border border-[#3e4456] rounded text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition-colors"
             >
               {filteredTemplates.length > 0 &&
               filteredTemplates.every(t => selectedIds.has(t.id)) ? (
                 <>
-                  <CheckSquare className="w-3.5 h-3.5 text-[#6b7cff]" />
+                  <Square className="w-3.5 h-3.5 text-[#8f8b80]" />
                   <span>取消全选</span>
                 </>
               ) : (
                 <>
-                  <Square className="w-3.5 h-3.5" />
-                  <span>全选</span>
+                  <CheckSquare className="w-3.5 h-3.5 text-[#6b7cff]" />
+                  <span>全选过滤项</span>
                 </>
               )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleResetPresets}
+              className="p-1.5 bg-[#252834] hover:bg-[#303444] text-[#8f8b80] hover:text-[#e9e4d8] border border-[#3e4456] rounded cursor-pointer transition-colors"
+              title="重新从服务器拉取官方池"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -559,44 +584,65 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
             <div className="py-12 text-center text-xs text-[#8f8b80] space-y-3">
               <AlertCircle className="w-6 h-6 text-[#8f8b80] mx-auto opacity-50" />
               <div className="text-sm font-semibold text-[#c8c5bc]">
-                官方作业池当前暂无作业（已清除系统内置示范作业）
+                官方作业池当前暂无作业
               </div>
-              <p className="text-xs text-[#8f8b80] max-w-md mx-auto leading-relaxed">
-                当前 D1 官方作业池保持纯净空白。您可以直接点击下方按钮，将学号 [2612114501] 的作业一键提取录入为全员官方作业池，或通过 Cloudflare D1 执行 SQL。
-              </p>
 
-              <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-                <button
-                  type="button"
-                  disabled={adminOperating}
-                  onClick={() => handleSyncUserToPool(user?.username || '2612114501')}
-                  className="px-3.5 py-1.5 bg-[#6b7cff] hover:bg-[#5868e6] text-white rounded font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm disabled:opacity-50"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>将学号 2612114501 作业转入官方池</span>
-                </button>
+              {isAdmin ? (
+                <>
+                  <p className="text-xs text-[#8f8b80] max-w-md mx-auto leading-relaxed">
+                    当前 D1 官方作业池保持纯净空白。作为管理员，您可以点击下方按钮，将管理员账号 (admin) 录入的作业一键转存至官方作业池，并可一键广播下发给全员。
+                  </p>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAdminPanel(true);
-                    setShowSqlDrawer(true);
-                  }}
-                  className="px-3 py-1.5 bg-[#252834] hover:bg-[#303444] text-[#e9e4d8] border border-[#3a3e50] rounded text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Code className="w-3.5 h-3.5 text-[#6b7cff]" />
-                  <span>查看 D1 SQL 脚本</span>
-                </button>
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      disabled={adminOperating}
+                      onClick={handleSyncAdminToPool}
+                      className="px-3.5 py-1.5 bg-[#6b7cff] hover:bg-[#5868e6] text-white rounded font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm disabled:opacity-50"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>将管理员 (admin) 作业转存入官方池</span>
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={handleResetPresets}
-                  className="px-3 py-1.5 bg-[#1f2229] hover:bg-[#282c35] text-[#8f8b80] hover:text-[#e9e4d8] rounded text-xs flex items-center gap-1 transition-colors cursor-pointer"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>重新刷新</span>
-                </button>
-              </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAdminPanel(true);
+                        setShowSqlDrawer(true);
+                      }}
+                      className="px-3 py-1.5 bg-[#252834] hover:bg-[#303444] text-[#e9e4d8] border border-[#3a3e50] rounded text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Code className="w-3.5 h-3.5 text-[#6b7cff]" />
+                      <span>查看 D1 SQL 脚本</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleResetPresets}
+                      className="px-3 py-1.5 bg-[#1f2229] hover:bg-[#282c35] text-[#8f8b80] hover:text-[#e9e4d8] rounded text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>重新刷新</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-[#8f8b80] max-w-md mx-auto leading-relaxed">
+                    管理员或教师尚未向全员下发新的课程作业任务。请等待任课教师或管理员发布后，点击下方按钮刷新同步。
+                  </p>
+                  <div className="flex justify-center pt-2">
+                    <button
+                      type="button"
+                      onClick={handleResetPresets}
+                      className="px-4 py-2 bg-[#252834] hover:bg-[#303444] text-[#e9e4d8] border border-[#3a3e50] rounded text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-[#6b7cff]" />
+                      <span>刷新官方作业池</span>
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             <div className="space-y-2">
@@ -652,11 +698,22 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
                         {item.title}
                       </div>
 
-                      {item.creator && (
-                        <div className="text-[10px] font-mono text-[#63605a] mt-1">
-                          发布源: {item.creator}
-                        </div>
-                      )}
+                      <div className="flex items-center justify-between mt-1 text-[10px] font-mono text-[#63605a]">
+                        <span>发布源: {item.creator || '管理员'}</span>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              handleDeletePoolItem(item.id);
+                            }}
+                            className="p-1 text-[#8f8b80] hover:text-[#ff6b57] hover:bg-[#ff6b57]/15 rounded transition-colors cursor-pointer"
+                            title="从官方作业池移除此条目 (管理员)"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );

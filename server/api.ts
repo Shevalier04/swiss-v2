@@ -21,7 +21,7 @@ export function getCurrentUser(req: Request): string | null {
 // Handler for homework synchronization
 export async function handleSyncHomework(req: Request, res: Response) {
   try {
-    const username = getCurrentUser(req) || (req.body && req.body.username) || '2612114501';
+    const username = getCurrentUser(req) || (req.body && req.body.username) || 'admin';
     const { cookies, account } = req.body || {};
 
     const pool = dbStore.getConsoleHomework();
@@ -526,12 +526,12 @@ apiRouter.post('/homework/console-pool', (req: Request, res: Response) => {
     });
   }
 
-  // 2. 将指定学号（如 2612114501）转存为官方作业池
+  // 2. 将指定管理员账号（如 admin）转存为官方作业池
   if (body.action === 'sync_user') {
-    const targetUser = body.username || '2612114501';
+    const targetUser = body.username || 'admin';
     const studentHw = dbStore.getHomework(targetUser);
     if (!studentHw || studentHw.length === 0) {
-      return res.status(404).json({ error: `学号 [${targetUser}] 当前暂无作业数据` });
+      return res.status(404).json({ error: `账号 [${targetUser}] 当前暂无作业数据` });
     }
 
     studentHw.forEach(it => {
@@ -545,7 +545,7 @@ apiRouter.post('/homework/console-pool', (req: Request, res: Response) => {
 
     return res.json({
       success: true,
-      message: `已成功将学号 [${targetUser}] 的 ${studentHw.length} 项作业转入官方作业池`,
+      message: `已成功将账号 [${targetUser}] 的 ${studentHw.length} 项作业转入官方作业池`,
       templates: dbStore.getConsoleHomework(),
     });
   }
@@ -606,10 +606,10 @@ apiRouter.post('/homework/console-pool/push', (req: Request, res: Response) => {
 });
 
 apiRouter.post('/homework/console-pool/sync-user', (req: Request, res: Response) => {
-  const targetUser = req.body?.username || '2612114501';
+  const targetUser = req.body?.username || 'admin';
   const studentHw = dbStore.getHomework(targetUser);
   if (!studentHw || studentHw.length === 0) {
-    return res.status(404).json({ error: `学号 [${targetUser}] 当前暂无作业数据` });
+    return res.status(404).json({ error: `账号 [${targetUser}] 当前暂无作业数据` });
   }
 
   studentHw.forEach(it => {
@@ -856,7 +856,7 @@ apiRouter.post('/admin/terminal', (req: Request, res: Response) => {
   hw list                        查看全局官方作业库（供学生一键同步）
   hw add 课名|作业内容|截止日期   添加作业到官方作业库
   hw del <序号>                  从官方作业库删除作业
-  hw sync <学号=2612114501>      将指定学生作业转存入官方作业库
+  hw sync <账号=admin>          将指定账号（默认管理员）作业转存入官方作业库
   hw broadcast                   将官方作业库全部作业广播下发给所有学生
   hw push 课名|作业内容|截止日期  直接将指定作业推送到所有学生作业清单
   hw clear                       清空官方作业库
@@ -1024,9 +1024,9 @@ apiRouter.post('/admin/terminal', (req: Request, res: Response) => {
           });
           lines.push({ text: `已向全班 ${allU.length} 名学生推送作业：[${hCourse}] ${hTitle}`, type: 'info' });
         } else if (hwSub === 'sync') {
-          const targetUser = p[2] || '2612114501';
+          const targetUser = p[2] || 'admin';
           const studentHw = dbStore.getHomework(targetUser);
-          if (!studentHw || studentHw.length === 0) throw new Error(`学号 [${targetUser}] 当前没有作业可同步`);
+          if (!studentHw || studentHw.length === 0) throw new Error(`账号 [${targetUser}] 当前没有作业可同步`);
           studentHw.forEach(it => {
             dbStore.addConsoleHomework({
               course: it.course,
@@ -1035,7 +1035,7 @@ apiRouter.post('/admin/terminal', (req: Request, res: Response) => {
               creator: targetUser
             });
           });
-          lines.push({ text: `已将学号 [${targetUser}] 的 ${studentHw.length} 项作业成功转入官方作业池`, type: 'info' });
+          lines.push({ text: `已将账号 [${targetUser}] 的 ${studentHw.length} 项作业成功转入官方作业池`, type: 'info' });
         } else if (hwSub === 'pushall' || hwSub === 'broadcast') {
           const pool = dbStore.getConsoleHomework();
           if (!pool || pool.length === 0) throw new Error('官方作业池为空，请先添加作业');

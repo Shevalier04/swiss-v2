@@ -721,14 +721,16 @@ export default function App() {
               <span className="text-[#45474e]">·</span>
               <span>{courses.length}课 / {homework.length}作业 / {tasks.length}任务</span>
             </div>
-            <button
-              onClick={() => setIsDataManagementOpen(true)}
-              className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold text-[#6b7cff] hover:text-white hover:bg-[#6b7cff]/30 transition-all cursor-pointer border border-[#6b7cff]/30 active:scale-95"
-              title="数据管理与一键导入"
-            >
-              <Database className="w-2.5 h-2.5" />
-              <span>数据管理</span>
-            </button>
+            {currentUser.role === 'admin' && (
+              <button
+                onClick={() => setIsDataManagementOpen(true)}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold text-[#6b7cff] hover:text-white hover:bg-[#6b7cff]/30 transition-all cursor-pointer border border-[#6b7cff]/30 active:scale-95"
+                title="数据管理与一键导入 (管理员)"
+              >
+                <Database className="w-2.5 h-2.5" />
+                <span>数据管理</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -747,7 +749,7 @@ export default function App() {
                 setCoursePreset(null);
               }}
               onOpenWeekSchedule={() => setActiveTab('week')}
-              onOpenDataManagement={() => setIsDataManagementOpen(true)}
+              onOpenDataManagement={currentUser.role === 'admin' ? () => setIsDataManagementOpen(true) : undefined}
               onImportPreset={handleResetTemplate}
             />
           )}
@@ -770,7 +772,7 @@ export default function App() {
                 });
               }}
               onRefreshCourses={loadAllUserData}
-              onOpenDataManagement={() => setIsDataManagementOpen(true)}
+              onOpenDataManagement={currentUser.role === 'admin' ? () => setIsDataManagementOpen(true) : undefined}
               onImportPreset={handleResetTemplate}
               sundayAutoAdvance={remindSettings.sundayAutoAdvance}
               toast={showToast}
@@ -816,12 +818,13 @@ export default function App() {
               pendingTaskCount={pendingTaskCount}
               onLogout={handleLogout}
               onOpenAdmin={() => setIsAdminTerminalOpen(true)}
-              onOpenDataManagement={() => setIsDataManagementOpen(true)}
+              onOpenDataManagement={currentUser.role === 'admin' ? () => setIsDataManagementOpen(true) : undefined}
               onSwitchTab={tab => setActiveTab(tab)}
               onResetTemplate={handleResetTemplate}
               onExportData={handleExportData}
               onClearData={handleClearData}
               onSelectPdfFile={f => setPdfFileToImport(f)}
+              onUpdateUser={u => setCurrentUser(u)}
               toast={showToast}
             />
           )}
@@ -998,16 +1001,18 @@ export default function App() {
         />
       )}
 
-      {/* Cloud Data Management Modal */}
-      <DataManagementModal
-        isOpen={isDataManagementOpen}
-        onClose={() => setIsDataManagementOpen(false)}
-        courses={courses}
-        homework={homework}
-        tasks={tasks}
-        onRefresh={loadAllUserData}
-        toast={showToast}
-      />
+      {/* Cloud Data Management Modal (Terminal Admin Only) */}
+      {currentUser.role === 'admin' && (
+        <DataManagementModal
+          isOpen={isDataManagementOpen}
+          onClose={() => setIsDataManagementOpen(false)}
+          courses={courses}
+          homework={homework}
+          tasks={tasks}
+          onRefresh={loadAllUserData}
+          toast={showToast}
+        />
+      )}
 
       {/* Toast Notification */}
       {toastMsg && (

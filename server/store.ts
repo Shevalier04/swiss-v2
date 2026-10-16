@@ -286,14 +286,14 @@ class Store {
   // Console Homework Pool (无硬编码示范作业，空数据时保持为空)
   getConsoleHomework(): { id: number; course: string; title: string; due?: string; creator?: string; createdAt?: number }[] {
     if (!this.db.consoleHomework) {
-      const studentHw = this.getHomework('2612114501');
-      if (studentHw && studentHw.length > 0) {
-        this.db.consoleHomework = studentHw.map(h => ({
+      const adminHw = this.getHomework('admin');
+      if (adminHw && adminHw.length > 0) {
+        this.db.consoleHomework = adminHw.map(h => ({
           id: h.id || Date.now(),
           course: h.course,
           title: h.title,
           due: h.due,
-          creator: '2612114501',
+          creator: 'admin',
           createdAt: Date.now()
         }));
       } else {

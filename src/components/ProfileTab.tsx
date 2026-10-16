@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { User, RemindSettings } from '../types';
+import { api } from '../services/api';
 import {
   Terminal,
   RotateCcw,
@@ -11,8 +12,10 @@ import {
   FileUp,
   Database,
   Cloud,
-  Presentation,
   BookOpen,
+  Edit3,
+  Check,
+  X,
 } from 'lucide-react';
 
 interface ProfileTabProps {
@@ -23,12 +26,12 @@ interface ProfileTabProps {
   onLogout: () => void;
   onOpenAdmin: () => void;
   onOpenDataManagement?: () => void;
-  onOpenPresentation?: () => void;
   onSwitchTab: (tab: any) => void;
   onResetTemplate: () => void;
   onExportData: () => void;
   onClearData: () => void;
   onSelectPdfFile: (file: File) => void;
+  onUpdateUser?: (updated: User) => void;
   toast: (msg: string) => void;
 }
 
@@ -40,16 +43,30 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   onLogout,
   onOpenAdmin,
   onOpenDataManagement,
-  onOpenPresentation,
   onSwitchTab,
   onResetTemplate,
   onExportData,
   onClearData,
   onSelectPdfFile,
+  onUpdateUser,
   toast,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showDataPanel, setShowDataPanel] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editingName, setEditingName] = useState(user.name);
+
+  const handleSaveName = () => {
+    const trimmed = editingName.trim();
+    if (!trimmed) {
+      toast('姓名不能为空');
+      return;
+    }
+    const updated = api.updateProfileName(user.username, trimmed);
+    if (onUpdateUser) onUpdateUser(updated);
+    setIsEditingName(false);
+    toast(`姓名已更新为：${trimmed}`);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -81,9 +98,55 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
           {user.name.slice(0, 2).toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-editorial text-xl font-extrabold truncate">{user.name}</div>
+          {isEditingName ? (
+            <div className="flex items-center gap-1.5 py-0.5">
+              <input
+                type="text"
+                value={editingName}
+                onChange={e => setEditingName(e.target.value)}
+                placeholder="输入真实姓名"
+                className="bg-[#181a1f] border border-[#6b7cff] text-sm text-[#e9e4d8] font-bold px-2 py-1 rounded outline-none w-36"
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleSaveName();
+                  if (e.key === 'Escape') setIsEditingName(false);
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleSaveName}
+                className="p-1.5 bg-[#6b7cff] text-white rounded hover:bg-[#5868e6] cursor-pointer"
+                title="保存姓名"
+              >
+                <Check className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsEditingName(false)}
+                className="p-1.5 bg-[#33363f] text-[#8f8b80] hover:text-[#e9e4d8] rounded cursor-pointer"
+                title="取消"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <div className="font-editorial text-xl font-extrabold truncate">{user.name}</div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingName(user.name);
+                  setIsEditingName(true);
+                }}
+                className="p-1 text-[#8f8b80] hover:text-[#6b7cff] hover:bg-[#6b7cff]/10 rounded transition-colors cursor-pointer"
+                title="修改/设置姓名"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
           <div className="text-xs text-[#8f8b80] mt-0.5 truncate font-mono">
-            {user.role === 'admin' ? '系统管理员 · ADMIN' : `学生 · ${user.username}`}
+            {user.role === 'admin' ? '系统管理员 · ADMIN' : `学生学号 · ${user.username}`}
           </div>
         </div>
         <button
@@ -94,27 +157,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         </button>
       </div>
 
-      {/* Product Manual & PPT Presentation Entry */}
-      <div
-        onClick={onOpenPresentation}
-        className="flex items-center gap-3.5 bg-gradient-to-r from-[#1c1e24] via-[#22252e] to-[#1c1e24] border-2 border-[#6b7cff]/60 p-4 cursor-pointer hover:border-[#6b7cff] transition-all group shadow-lg rounded-sm"
-      >
-        <div className="w-11 h-11 rounded bg-[#6b7cff]/20 text-[#6b7cff] flex items-center justify-center shrink-0 border border-[#6b7cff]/40 group-hover:scale-105 transition-transform">
-          <Presentation className="w-6 h-6" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="font-bold text-sm text-[#e9e4d8] tracking-wide flex items-center gap-2">
-            <span>产品使用说明书 · PPT 演示文稿</span>
-            <span className="text-[10px] px-1.5 py-0.5 bg-[#6b7cff] text-white font-mono font-bold rounded">
-              可下载 .pptx
-            </span>
-          </div>
-          <div className="text-xs text-[#9a978e] mt-1 line-clamp-1">
-            13 页高保真 16:9 幻灯片 · 在线全屏放映 · 一键导出 PPTX / 复制大纲
-          </div>
-        </div>
-        <ChevronRight className="w-4 h-4 text-[#8f8b80] group-hover:text-[#6b7cff] group-hover:translate-x-0.5 transition-all shrink-0" />
-      </div>
 
       {/* Admin Terminal Entry */}
       {user.role === 'admin' && (
@@ -290,8 +332,8 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
           DATA · 数据与云端管理
         </div>
         <div className="border-t-2 border-[#e9e4d8] divide-y divide-[#2a2d34] text-sm">
-          {/* Unified Cloud Data Management Modal Entry */}
-          {onOpenDataManagement && (
+          {/* Unified Cloud Data Management Modal Entry (Only visible to admin) */}
+          {user.role === 'admin' && onOpenDataManagement && (
             <div
               onClick={onOpenDataManagement}
               className="flex items-center justify-between py-3.5 px-3.5 my-1.5 cursor-pointer hover:bg-[#6b7cff]/15 transition-all bg-[#6b7cff]/10 rounded border border-[#6b7cff]/35 shadow-sm group"
@@ -304,7 +346,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                   <div className="font-semibold text-[#e9e4d8] flex items-center gap-1.5">
                     <span>云端数据管理中心</span>
                     <span className="text-[10px] px-1.5 py-0.2 bg-[#6b7cff] text-white font-bold rounded">
-                      D1 集中管理
+                      仅管理员
                     </span>
                   </div>
                   <div className="text-xs text-[#8f8b80] mt-0.5">
