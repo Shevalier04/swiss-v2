@@ -484,10 +484,77 @@ apiRouter.get('/homework/console-pool', (_req: Request, res: Response) => {
 apiRouter.post('/homework/console-pool', (req: Request, res: Response) => {
   const username = getCurrentUser(req);
   const user = username ? dbStore.getUser(username) : null;
-  if (user?.role !== 'admin') {
+  const body = req.body || {};
+
+  // 1. 全员广播推送
+  if (body.action === 'push' || body.pushToAll === true) {
+    let pushItems: { course: string; title: string; due?: string }[] = [];
+    if (body.item && body.item.title) {
+      pushItems = [{
+        course: body.item.course || '常规课程',
+        title: String(body.item.title).trim(),
+        due: body.item.due ? String(body.item.due).trim() : undefined,
+      }];
+    } else {
+      pushItems = dbStore.getConsoleHomework().map(h => ({
+        course: h.course,
+        title: h.title,
+        due: h.due,
+      }));
+    }
+
+    if (pushItems.length === 0) {
+      return res.status(400).json({ error: '官方作业池为空，暂无待推送的作业' });
+    }
+
+    const allUsers = dbStore.getAllUsers();
+    allUsers.forEach(u => {
+      pushItems.forEach(it => {
+        dbStore.addHomework(u.username, {
+          course: it.course,
+          title: it.title,
+          due: it.due,
+        });
+      });
+    });
+
+    return res.json({
+      success: true,
+      message: `已向全员 ${allUsers.length} 名学生推送 ${pushItems.length} 项作业`,
+      usersCount: allUsers.length,
+      itemsCount: pushItems.length,
+    });
+  }
+
+  // 2. 将指定学号（如 2612114501）转存为官方作业池
+  if (body.action === 'sync_user') {
+    const targetUser = body.username || '2612114501';
+    const studentHw = dbStore.getHomework(targetUser);
+    if (!studentHw || studentHw.length === 0) {
+      return res.status(404).json({ error: `学号 [${targetUser}] 当前暂无作业数据` });
+    }
+
+    studentHw.forEach(it => {
+      dbStore.addConsoleHomework({
+        course: it.course,
+        title: it.title,
+        due: it.due,
+        creator: targetUser,
+      });
+    });
+
+    return res.json({
+      success: true,
+      message: `已成功将学号 [${targetUser}] 的 ${studentHw.length} 项作业转入官方作业池`,
+      templates: dbStore.getConsoleHomework(),
+    });
+  }
+
+  if (user && user.role !== 'admin') {
     return res.status(403).json({ error: '仅管理员可通过终端管理官方作业池' });
   }
-  const { course, title, due } = req.body;
+
+  const { course, title, due } = body;
   if (!title) return res.status(400).json({ error: '作业内容不能为空' });
   const item = dbStore.addConsoleHomework({
     course: course || '其他',
@@ -496,6 +563,69 @@ apiRouter.post('/homework/console-pool', (req: Request, res: Response) => {
     creator: user?.name || username || '系统管理员'
   });
   return res.json({ template: item });
+});
+
+apiRouter.post('/homework/console-pool/push', (req: Request, res: Response) => {
+  const body = req.body || {};
+  let pushItems: { course: string; title: string; due?: string }[] = [];
+  if (body.item && body.item.title) {
+    pushItems = [{
+      course: body.item.course || '常规课程',
+      title: String(body.item.title).trim(),
+      due: body.item.due ? String(body.item.due).trim() : undefined,
+    }];
+  } else {
+    pushItems = dbStore.getConsoleHomework().map(h => ({
+      course: h.course,
+      title: h.title,
+      due: h.due,
+    }));
+  }
+
+  if (pushItems.length === 0) {
+    return res.status(400).json({ error: '官方作业池为空，暂无待推送的作业' });
+  }
+
+  const allUsers = dbStore.getAllUsers();
+  allUsers.forEach(u => {
+    pushItems.forEach(it => {
+      dbStore.addHomework(u.username, {
+        course: it.course,
+        title: it.title,
+        due: it.due,
+      });
+    });
+  });
+
+  return res.json({
+    success: true,
+    message: `已向全员 ${allUsers.length} 名学生推送 ${pushItems.length} 项作业`,
+    usersCount: allUsers.length,
+    itemsCount: pushItems.length,
+  });
+});
+
+apiRouter.post('/homework/console-pool/sync-user', (req: Request, res: Response) => {
+  const targetUser = req.body?.username || '2612114501';
+  const studentHw = dbStore.getHomework(targetUser);
+  if (!studentHw || studentHw.length === 0) {
+    return res.status(404).json({ error: `学号 [${targetUser}] 当前暂无作业数据` });
+  }
+
+  studentHw.forEach(it => {
+    dbStore.addConsoleHomework({
+      course: it.course,
+      title: it.title,
+      due: it.due,
+      creator: targetUser,
+    });
+  });
+
+  return res.json({
+    success: true,
+    message: `已成功将学号 [${targetUser}] 的 ${studentHw.length} 项作业转入官方作业池`,
+    templates: dbStore.getConsoleHomework(),
+  });
 });
 
 apiRouter.post('/homework/console-pool/batch-sync', (req: Request, res: Response) => {
@@ -723,11 +853,13 @@ apiRouter.post('/admin/terminal', (req: Request, res: Response) => {
   courses <名称>                 列出用户课程
   course add <名称> 课名|周几(1-7)|起始节|结束节|教室|教师
   course del <名称> <序号>        删除指定课程
-  hw list                        查看控制台作业库（供学生一键导入）
-  hw add 课名|作业内容|截止日期   添加作业到控制台作业库
-  hw del <序号>                  从控制台作业库删除作业
-  hw push 课名|作业内容|截止日期  直接将作业推送到所有学生作业清单
-  hw clear                       清空控制台作业库
+  hw list                        查看全局官方作业库（供学生一键同步）
+  hw add 课名|作业内容|截止日期   添加作业到官方作业库
+  hw del <序号>                  从官方作业库删除作业
+  hw sync <学号=2612114501>      将指定学生作业转存入官方作业库
+  hw broadcast                   将官方作业库全部作业广播下发给所有学生
+  hw push 课名|作业内容|截止日期  直接将指定作业推送到所有学生作业清单
+  hw clear                       清空官方作业库
   notice <内容>                  向全校发布公告
   notices                        查看公告列表
   stats                          全局统计
@@ -891,8 +1023,35 @@ apiRouter.post('/admin/terminal', (req: Request, res: Response) => {
             });
           });
           lines.push({ text: `已向全班 ${allU.length} 名学生推送作业：[${hCourse}] ${hTitle}`, type: 'info' });
+        } else if (hwSub === 'sync') {
+          const targetUser = p[2] || '2612114501';
+          const studentHw = dbStore.getHomework(targetUser);
+          if (!studentHw || studentHw.length === 0) throw new Error(`学号 [${targetUser}] 当前没有作业可同步`);
+          studentHw.forEach(it => {
+            dbStore.addConsoleHomework({
+              course: it.course,
+              title: it.title,
+              due: it.due,
+              creator: targetUser
+            });
+          });
+          lines.push({ text: `已将学号 [${targetUser}] 的 ${studentHw.length} 项作业成功转入官方作业池`, type: 'info' });
+        } else if (hwSub === 'pushall' || hwSub === 'broadcast') {
+          const pool = dbStore.getConsoleHomework();
+          if (!pool || pool.length === 0) throw new Error('官方作业池为空，请先添加作业');
+          const allU = dbStore.getAllUsers();
+          allU.forEach(u => {
+            pool.forEach(h => {
+              dbStore.addHomework(u.username, {
+                course: h.course,
+                title: h.title,
+                due: h.due
+              });
+            });
+          });
+          lines.push({ text: `已向全员 ${allU.length} 名学生广播下发官方作业池全部 ${pool.length} 项作业`, type: 'info' });
         } else {
-          throw new Error('未知 hw 子命令，可用：hw list, hw add, hw del, hw push, hw clear');
+          throw new Error('未知 hw 子命令，可用：hw list, hw add, hw del, hw push, hw sync, hw broadcast, hw clear');
         }
         break;
 

@@ -283,16 +283,22 @@ class Store {
     this.persist();
   }
 
-  // Console Homework Pool
+  // Console Homework Pool (无硬编码示范作业，空数据时保持为空)
   getConsoleHomework(): { id: number; course: string; title: string; due?: string; creator?: string; createdAt?: number }[] {
     if (!this.db.consoleHomework) {
-      this.db.consoleHomework = [
-        { id: 101, course: 'Web编程技术', title: '完成前端响应式界面制作与CSS3动画', due: '2026-10-18', creator: '系统管理员' },
-        { id: 102, course: '数据库概论', title: '第三章 ER 图设计报告与SQL多表查询', due: '2026-10-21', creator: '系统管理员' },
-        { id: 103, course: 'Java开发技术', title: '完成第四章对象与面向对象编程实验报告', due: '2026-10-23', creator: '系统管理员' },
-        { id: 104, course: '计算机网络', title: 'Wireshark 抓包分析 TCP 三次握手', due: '2026-10-26', creator: '系统管理员' },
-        { id: 105, course: '软件工程导论', title: '可行性研究与系统需求规格说明书', due: '2026-10-30', creator: '系统管理员' },
-      ];
+      const studentHw = this.getHomework('2612114501');
+      if (studentHw && studentHw.length > 0) {
+        this.db.consoleHomework = studentHw.map(h => ({
+          id: h.id || Date.now(),
+          course: h.course,
+          title: h.title,
+          due: h.due,
+          creator: '2612114501',
+          createdAt: Date.now()
+        }));
+      } else {
+        this.db.consoleHomework = [];
+      }
       this.persist();
     }
     return this.db.consoleHomework;

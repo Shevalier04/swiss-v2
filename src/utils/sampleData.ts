@@ -29,13 +29,8 @@ export const SAMPLE_COURSES: Omit<Course, 'id'>[] = [
   { name: "专业见习", teacher: "刘斌", room: "校外实践基地", day: 5, s: 1, e: 4, weeks: "15周", color: PALETTE[6] },
 ];
 
-export const SAMPLE_ASSIGNMENTS: { course: string; title: string; due?: string }[] = [
-  { course: "Web编程技术", title: "完成移动端响应式课表界面开发与适配", due: "2026-10-18" },
-  { course: "数据库概论", title: "设计电商平台系统 ER 图与核心多表联查 SQL", due: "2026-10-21" },
-  { course: "Java开发技术", title: "完成面向对象多态与集合框架实验报告", due: "2026-10-23" },
-  { course: "计算机网络", title: "使用 Wireshark 抓包分析 TCP 三次握手过程", due: "2026-10-26" },
-  { course: "软件工程导论", title: "完成系统可行性分析报告与用例建模设计", due: "2026-10-30" },
-];
+// 官方作业已全部通过 Cloudflare D1 homework_pool 动态管理，不再硬编码任何示范作业
+export const SAMPLE_ASSIGNMENTS: { course: string; title: string; due?: string }[] = [];
 
 export const SAMPLE_TASKS: { title: string }[] = [
   { title: "准备计算机网络期中复习笔记（物理层至网络层）" },

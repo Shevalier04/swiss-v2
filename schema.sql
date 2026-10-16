@@ -58,9 +58,51 @@ CREATE TABLE IF NOT EXISTS assignments (
 
 CREATE INDEX IF NOT EXISTS idx_assignments_user ON assignments(username, created_at DESC);
 
+-- ------------------------------------------------------------------------------
+-- 4. 全局官方作业池表 (homework_pool)
+-- 全班统一的作业模版库，供全员学生在客户端自由勾选同步，亦可由管理员一键全员下发
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS homework_pool (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  course TEXT NOT NULL,                      -- 课程名称
+  title TEXT NOT NULL,                       -- 作业内容与要求
+  due TEXT,                                  -- 截止日期时间
+  creator TEXT DEFAULT '管理员',             -- 创建人 / 发布学号
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_hw_pool_course ON homework_pool(course, created_at DESC);
+
 -- ==============================================================================
 -- 针对已建旧表的平滑升级迁移（如果之前已建表，执行下列 ALTER 语句补充 username 字段）：
 -- ==============================================================================
 -- ALTER TABLE tasks ADD COLUMN username TEXT NOT NULL DEFAULT 'default';
 -- ALTER TABLE courses ADD COLUMN username TEXT NOT NULL DEFAULT 'default';
 -- ALTER TABLE assignments ADD COLUMN username TEXT NOT NULL DEFAULT 'default';
+
+-- ==============================================================================
+-- D1 控制台常用实用 SQL 脚本（复制到 Cloudflare D1 Console 即可执行）：
+-- ==============================================================================
+
+-- 【脚本 1】将学号 2612114501 的现有作业一键转存为全局官方作业池（去重写入）：
+-- INSERT INTO homework_pool (course, title, due, creator)
+-- SELECT course_name, title, deadline, '2612114501'
+-- FROM assignments
+-- WHERE username = '2612114501'
+--   AND (course_name || ':::' || title) NOT IN (SELECT course || ':::' || title FROM homework_pool);
+
+-- 【脚本 2】将官方作业池的全部作业一键广播推送到所有学生的个人作业表（assignments）：
+-- INSERT INTO assignments (username, course_name, title, deadline, completed)
+-- SELECT u.username, p.course, p.title, p.due, 0
+-- FROM (SELECT DISTINCT username FROM assignments) u
+-- CROSS JOIN homework_pool p
+-- WHERE NOT EXISTS (
+--   SELECT 1 FROM assignments a 
+--   WHERE a.username = u.username 
+--     AND LOWER(TRIM(a.course_name)) = LOWER(TRIM(p.course))
+--     AND LOWER(TRIM(a.title)) = LOWER(TRIM(p.title))
+-- );
+
+-- 【脚本 3】删除历史测试数据或旧示范作业池：
+-- DELETE FROM homework_pool WHERE title LIKE '%示范%' OR title LIKE '%测试%' OR creator = '官方预设';
+-- DELETE FROM assignments WHERE username = 'default' AND (title LIKE '%示范%' OR title LIKE '%测试%');

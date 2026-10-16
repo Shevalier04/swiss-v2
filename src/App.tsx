@@ -3,7 +3,7 @@ import { User, Course, Homework, TaskItem, Notice, RemindSettings } from './type
 import { api } from './services/api';
 import { SLOTS, toMinutes, isCourseInWeek, getWeekNo, getNextDayInfo, isSundayEvening } from './utils/time';
 import { playReminderBeep } from './utils/audio';
-import { SAMPLE_ASSIGNMENTS, SAMPLE_TASKS } from './utils/sampleData';
+import { SAMPLE_TASKS } from './utils/sampleData';
 
 import { PWAInstallBar } from './components/PWAInstallBar';
 import { AuthView } from './components/AuthView';
@@ -20,7 +20,6 @@ import { AdminTerminalModal } from './components/AdminTerminalModal';
 import { ReminderToast } from './components/ReminderToast';
 import { SundayEveModal } from './components/SundayEveModal';
 import { DataManagementModal } from './components/DataManagementModal';
-import { PresentationModal } from './components/PresentationModal';
 
 import {
   CalendarDays,
@@ -30,7 +29,6 @@ import {
   User as UserIcon,
   Database,
   Cloud,
-  Presentation,
 } from 'lucide-react';
 
 export default function App() {
@@ -84,7 +82,6 @@ export default function App() {
   const [pdfFileToImport, setPdfFileToImport] = useState<File | null>(null);
   const [isAdminTerminalOpen, setIsAdminTerminalOpen] = useState(false);
   const [isDataManagementOpen, setIsDataManagementOpen] = useState(false);
-  const [isPresentationOpen, setIsPresentationOpen] = useState(false);
 
   // Active floating reminder toast
   const [activeReminderCourse, setActiveReminderCourse] = useState<Course | null>(null);
@@ -589,7 +586,13 @@ export default function App() {
 
   const handleImportPresetHw = async () => {
     try {
-      await handleBatchAddHw(SAMPLE_ASSIGNMENTS);
+      const pool = await api.getConsoleHomeworkTemplates();
+      if (!pool || pool.length === 0) {
+        showToast('官方作业池当前暂无作业，请先在管理终端发布或同步');
+        return;
+      }
+      await handleBatchAddHw(pool);
+      showToast(`已从官方作业池同步 ${pool.length} 项作业`);
     } catch (e: any) {
       showToast(e.message || '导入作业失败');
     }
@@ -718,24 +721,14 @@ export default function App() {
               <span className="text-[#45474e]">·</span>
               <span>{courses.length}课 / {homework.length}作业 / {tasks.length}任务</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setIsPresentationOpen(true)}
-                className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold text-[#e9e4d8] bg-[#22242a] hover:bg-[#2c2f38] hover:text-[#8ea4ff] transition-all cursor-pointer border border-[#3c404c] active:scale-95 shadow-sm"
-                title="产品使用说明书 (PPT 演示文稿与下载)"
-              >
-                <Presentation className="w-2.5 h-2.5 text-[#6b7cff]" />
-                <span>使用说明(PPT)</span>
-              </button>
-              <button
-                onClick={() => setIsDataManagementOpen(true)}
-                className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold text-[#6b7cff] hover:text-white hover:bg-[#6b7cff]/30 transition-all cursor-pointer border border-[#6b7cff]/30 active:scale-95"
-                title="数据管理与一键导入"
-              >
-                <Database className="w-2.5 h-2.5" />
-                <span>数据管理</span>
-              </button>
-            </div>
+            <button
+              onClick={() => setIsDataManagementOpen(true)}
+              className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold text-[#6b7cff] hover:text-white hover:bg-[#6b7cff]/30 transition-all cursor-pointer border border-[#6b7cff]/30 active:scale-95"
+              title="数据管理与一键导入"
+            >
+              <Database className="w-2.5 h-2.5" />
+              <span>数据管理</span>
+            </button>
           </div>
         )}
 
@@ -824,7 +817,6 @@ export default function App() {
               onLogout={handleLogout}
               onOpenAdmin={() => setIsAdminTerminalOpen(true)}
               onOpenDataManagement={() => setIsDataManagementOpen(true)}
-              onOpenPresentation={() => setIsPresentationOpen(true)}
               onSwitchTab={tab => setActiveTab(tab)}
               onResetTemplate={handleResetTemplate}
               onExportData={handleExportData}
@@ -1014,13 +1006,6 @@ export default function App() {
         homework={homework}
         tasks={tasks}
         onRefresh={loadAllUserData}
-        toast={showToast}
-      />
-
-      {/* Product Manual PPT Presentation Modal */}
-      <PresentationModal
-        isOpen={isPresentationOpen}
-        onClose={() => setIsPresentationOpen(false)}
         toast={showToast}
       />
 

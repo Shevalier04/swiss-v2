@@ -1,5 +1,5 @@
 import { Course, Homework, TaskItem, User, Notice } from '../types';
-import { SAMPLE_COURSES, SAMPLE_ASSIGNMENTS, SAMPLE_TASKS } from '../utils/sampleData';
+import { SAMPLE_COURSES, SAMPLE_TASKS } from '../utils/sampleData';
 
 const TOKEN_KEY = 'cs_app_token';
 
@@ -264,9 +264,11 @@ export const api = {
   // ==========================================
   // Assignments / Homework - Cloudflare D1 (/api/assignments)
   // ==========================================
-  async getHomework(): Promise<Homework[]> {
+  async getHomework(targetUser?: string): Promise<Homework[]> {
     try {
-      const res = await request<any>('/assignments');
+      const endpoint = targetUser ? `/assignments?username=${encodeURIComponent(targetUser)}` : '/assignments';
+      const headers = targetUser ? { 'X-Username': targetUser } : undefined;
+      const res = await request<any>(endpoint, { headers });
       const list = res.assignments || res.homework || (Array.isArray(res) ? res : []);
       return list.map((item: any) => ({
         id: Number(item.id),
@@ -383,7 +385,7 @@ export const api = {
   },
 
   // ==========================================
-  // Console Homework Pool (控制台作业库)
+  // Console Homework Pool (控制台官方作业库 - 真实 D1 同步，无硬编码示范)
   // ==========================================
   async getConsoleHomeworkTemplates(): Promise<any[]> {
     try {
@@ -394,11 +396,8 @@ export const api = {
         const saved = localStorage.getItem('cs_console_hw_pool');
         if (saved) return JSON.parse(saved);
       } catch (err) {}
-      return [
-        { id: 101, course: 'Web编程技术', title: '大作业：开发现代化课程表前端界面', due: '2026-11-20', creator: '控制台' },
-        { id: 102, course: '数据库概论', title: '实验三：SQL 复杂查询与索引优化分析', due: '2026-11-25', creator: '控制台' },
-        { id: 103, course: 'Java开发技术', title: '完成 Spring Boot 后端 RESTful 接口调试', due: '2026-11-28', creator: '控制台' },
-      ];
+      // 彻底移除硬编码示范作业，当未配置或为空时返回干净的空数组
+      return [];
     }
   },
 
@@ -443,10 +442,49 @@ export const api = {
     }
   },
 
-  async pushHomeworkToAllStudents(item: { course: string; title: string; due?: string }): Promise<string> {
-    const safeCourse = (item.course || '其他').trim();
-    const safeTitle = (item.title || '').trim();
-    const safeDue = (item.due || '').trim();
+  /**
+   * 将当前学号（如 2612114501）现有作业同步并写入官方作业池
+   */
+  async syncUserHomeworkToConsolePool(username = '2612114501'): Promise<{ success: boolean; message: string; templates: any[] }> {
+    try {
+      const res = await request<{ success: boolean; message: string; templates: any[] }>('/homework/console-pool', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'sync_user', username }),
+      });
+      return res;
+    } catch (e: any) {
+      // 客户端备用降级逻辑
+      const userHw = await this.getHomework(username);
+      for (const hw of userHw) {
+        await this.addConsoleHomeworkTemplate({
+          course: hw.course,
+          title: hw.title,
+          due: hw.due,
+        });
+      }
+      const updated = await this.getConsoleHomeworkTemplates();
+      return {
+        success: true,
+        message: `已将学号 [${username}] 的 ${userHw.length} 项作业同步至本地官方池`,
+        templates: updated,
+      };
+    }
+  },
+
+  async pushHomeworkToAllStudents(item?: { course: string; title: string; due?: string }): Promise<string> {
+    try {
+      const res = await request<{ success: boolean; message: string }>('/homework/console-pool', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'push', pushToAll: true, item }),
+      });
+      if (res && res.message) {
+        return res.message;
+      }
+    } catch (e: any) {}
+
+    const safeCourse = (item?.course || '其他').trim();
+    const safeTitle = (item?.title || '').trim();
+    const safeDue = (item?.due || '').trim();
     const cmd = `hw push ${safeCourse}|${safeTitle}${safeDue ? `|${safeDue}` : ''}`;
     const res = await this.runTerminalCommand(cmd);
     const textResult = res.lines?.map(l => l.text).join('; ') || '已全员推送作业';

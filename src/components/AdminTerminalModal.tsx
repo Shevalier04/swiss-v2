@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
-import { X, RefreshCw, Terminal as TerminalIcon, Trash2, BookOpen, Plus, Send } from 'lucide-react';
+import { X, RefreshCw, Terminal as TerminalIcon, Trash2, BookOpen, Plus, Send, Download, Radio } from 'lucide-react';
 
 interface AdminTerminalModalProps {
   onClose: () => void;
@@ -201,6 +201,44 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
     }
   };
 
+  const handleSyncStudentHw = async (studentId = '2612114501') => {
+    try {
+      const res = await api.syncUserHomeworkToConsolePool(studentId);
+      toast(res.message || `已同步学号 [${studentId}] 的作业到作业池`);
+      setOutput(prev => [
+        ...prev,
+        { text: `[官方作业池] ${res.message}`, type: 'info' },
+      ]);
+      loadHwPool();
+      onRefreshParent();
+    } catch (err: any) {
+      toast('同步学号作业失败：' + (err.message || '未知错误'));
+      setOutput(prev => [
+        ...prev,
+        { text: `[错误] 同步学号 ${studentId} 作业失败: ${err.message}`, type: 'err' },
+      ]);
+    }
+  };
+
+  const handleBroadcastEntirePool = async () => {
+    if (hwPool.length === 0) {
+      toast('官方作业池当前为空，请先录入或从学号同步');
+      return;
+    }
+    try {
+      const summary = await api.pushHomeworkToAllStudents();
+      toast(`已广播推送官方作业池给全员学生`);
+      setOutput(prev => [
+        ...prev,
+        { text: `[全员广播] ${summary}`, type: 'info' },
+      ]);
+      loadOverview();
+      onRefreshParent();
+    } catch (err: any) {
+      toast('全员广播失败: ' + (err.message || '未知错误'));
+    }
+  };
+
   const handleToggleDisabled = async (uname: string) => {
     try {
       const res = await api.toggleUserDisabled(uname);
@@ -398,16 +436,41 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            {panelTab === 'hw' && hwPool.length > 0 && (
-              <button
-                onClick={handleClearHwPool}
-                className="flex items-center gap-1 text-[11px] text-[#ff6b57] hover:underline cursor-pointer"
-                title="清空控制台作业库"
-              >
-                <Trash2 className="w-3 h-3" />
-                清空作业库
-              </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {panelTab === 'hw' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleSyncStudentHw('2612114501')}
+                  className="flex items-center gap-1 text-[11px] text-[#4ade80] hover:underline cursor-pointer px-1.5 py-0.5 rounded bg-[#4ade80]/10 border border-[#4ade80]/30"
+                  title="将学号 2612114501 现有作业去重存入官方作业池"
+                >
+                  <Download className="w-3 h-3" />
+                  同步2612114501作业
+                </button>
+                {hwPool.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleBroadcastEntirePool}
+                    className="flex items-center gap-1 text-[11px] text-[#8ea4ff] hover:underline cursor-pointer px-1.5 py-0.5 rounded bg-[#6b7cff]/10 border border-[#6b7cff]/30"
+                    title="一键将作业池推送到所有学生个人表"
+                  >
+                    <Radio className="w-3 h-3" />
+                    全员广播下发
+                  </button>
+                )}
+                {hwPool.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearHwPool}
+                    className="flex items-center gap-1 text-[11px] text-[#ff6b57] hover:underline cursor-pointer"
+                    title="清空控制台作业库"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    清空
+                  </button>
+                )}
+              </>
             )}
             <button
               onClick={() => {

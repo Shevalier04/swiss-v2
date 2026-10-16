@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Course, Homework, TaskItem } from '../types';
 import { api } from '../services/api';
-import { SAMPLE_COURSES, SAMPLE_ASSIGNMENTS, SAMPLE_TASKS } from '../utils/sampleData';
+import { SAMPLE_COURSES, SAMPLE_TASKS } from '../utils/sampleData';
 import {
   X,
   Database,
@@ -65,9 +65,14 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
   const handleImportPresetHomework = async () => {
     setLoading(true);
     try {
-      await api.batchAddHomework(SAMPLE_ASSIGNMENTS, importMode === 'replace');
+      const pool = await api.getConsoleHomeworkTemplates();
+      if (!pool || pool.length === 0) {
+        toast('官方作业池当前暂无作业，请先在管理终端发布或同步');
+        return;
+      }
+      await api.batchAddHomework(pool, importMode === 'replace');
       await onRefresh();
-      toast(`已成功导入 ${SAMPLE_ASSIGNMENTS.length} 项示例作业到云端 D1`);
+      toast(`已成功从官方作业池导入 ${pool.length} 项作业到当前账号`);
     } catch (e: any) {
       toast(e.message || '导入作业失败');
     } finally {
@@ -91,13 +96,17 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
   const handleImportAllPresets = async () => {
     setLoading(true);
     try {
-      await Promise.all([
+      const pool = await api.getConsoleHomeworkTemplates();
+      const calls: Promise<any>[] = [
         api.batchAddCourses(SAMPLE_COURSES, importMode === 'replace'),
-        api.batchAddHomework(SAMPLE_ASSIGNMENTS, importMode === 'replace'),
         api.batchAddTasks(SAMPLE_TASKS, importMode === 'replace'),
-      ]);
+      ];
+      if (pool && pool.length > 0) {
+        calls.push(api.batchAddHomework(pool, importMode === 'replace'));
+      }
+      await Promise.all(calls);
       await onRefresh();
-      toast('已一键填充全套示例数据（课表 + 作业 + 任务）');
+      toast(`已一键填充课表与任务${pool?.length ? `及 ${pool.length} 项官方作业` : ''}`);
     } catch (e: any) {
       toast(e.message || '批量填充失败');
     } finally {
@@ -418,14 +427,14 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
                 >
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="font-bold text-sm text-[#e9e4d8] group-hover:text-[#6b7cff]">
-                      导入示例作业
+                      从 D1 官方作业池同步
                     </span>
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#ff6b57]/20 text-[#ff6b57] font-mono">
-                      5 项作业
+                      全员作业
                     </span>
                   </div>
                   <div className="text-xs text-[#8f8b80] line-clamp-2">
-                    含 ER图设计、Wireshark抓包、前端界面等倒计时作业
+                    从 Cloudflare D1 homework_pool 官方作业库拉取全班最新作业
                   </div>
                 </button>
 
