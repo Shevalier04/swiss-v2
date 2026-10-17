@@ -88,7 +88,7 @@ export const COURSE_ALIASES: Record<string, string[]> = {
   '数据结构': ['DS', '数据结构与算法', '算法与数据结构', '算法设计与分析', '算法'],
   '数据库概论': ['数据库', '数据库系统', '数据库原理', 'SQL', 'DB', '数据库系统概论'],
   '软件工程导论': ['软工', '软件工程', '软工导论', '软件工程概论'],
-  'Web编程技术': ['Web', 'Web编程', '前端', 'Web前端', '网页制作', 'JavaScript', 'HTML', 'Web技术', '网页设计'],
+  'Web编程技术': ['Web', 'Web编程', '前端', 'Web前端', '网页制作', 'JavaScript', 'HTML', 'Web技术', '网页设计', 'Java Web', 'JavaWeb', 'JavaWeb编程', 'Java Web程序设计'],
   '毛泽东思想和中国特色社会主义理论体系概论': ['毛概', '毛特', '毛中特'],
   '马克思主义基本原理': ['马原', '马克思主义原理'],
   '中国近现代史纲要': ['近代史', '史纲', '纲要', '现代史'],
@@ -566,21 +566,27 @@ export function parseQuickHomeworkLine(
     }
   }
 
-  // 4. 检查常见别名匹配前缀（如以 "高数"、"计网"、"线代" 开头）
+  // 4. 检查常见别名匹配前缀（全域平铺按名称长度降序匹配，如 "Java Web" 长度 8 优先于 "Java" 长度 4）
+  const allAliasEntries: { name: string; canonical: string }[] = [];
   for (const [canonical, aliases] of Object.entries(COURSE_ALIASES)) {
-    const allNames = [canonical, ...aliases].sort((a, b) => b.length - a.length);
-    for (const name of allNames) {
-      if (remaining.startsWith(name)) {
-        const rest = remaining.slice(name.length);
-        const resolvedC = resolveCourseName(name, courseCandidates);
-        const title = cleanHomeworkTitle(rest);
-        return {
-          course: resolvedC,
-          title,
-          due,
-          rawDueText,
-        };
-      }
+    allAliasEntries.push({ name: canonical, canonical });
+    for (const alias of aliases) {
+      allAliasEntries.push({ name: alias, canonical });
+    }
+  }
+  allAliasEntries.sort((a, b) => b.name.length - a.name.length);
+
+  for (const entry of allAliasEntries) {
+    if (remaining.toLowerCase().startsWith(entry.name.toLowerCase())) {
+      const rest = remaining.slice(entry.name.length);
+      const resolvedC = resolveCourseName(entry.name, courseCandidates);
+      const title = cleanHomeworkTitle(rest);
+      return {
+        course: resolvedC,
+        title,
+        due,
+        rawDueText,
+      };
     }
   }
 
@@ -714,6 +720,15 @@ function isCourseSectionHeader(line: string, courseCandidates: string[] = []): s
 function isChatNoiseLine(line: string): boolean {
   const s = line.trim();
   if (!s) return true;
+
+  // 0. 特征保护：如果行内包含显式的作业/截止/平台/任务特征关键词，绝不判定为聊天杂音！
+  if (
+    s.match(
+      /(?:截止|作业|实验|任务|交|提交|上交|收齐|学习通|课堂派|PTA|超星|雨课堂|智慧树|完成|习题|试题|项目|大作业|阶段测验|测试)/i
+    )
+  ) {
+    return false;
+  }
 
   // 1. 发信人昵称与时间戳行，例如:
   // "学委-张三 2026/10/15 14:30:25"

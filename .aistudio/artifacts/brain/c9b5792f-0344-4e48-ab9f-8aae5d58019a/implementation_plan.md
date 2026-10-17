@@ -1,85 +1,51 @@
-# 语音录入绝对防卡死熔断与智能快捷演示面板方案
+# Implementation Plan - 修复群消息作业识别遗漏与 Java Web 课程映射
 
-解决国内移动端安卓浏览器（Edge/Chrome/华为）点击语音输入时因底层麦克风抢占或 `webkitSpeechRecognition` 网络死循环导致的页面主线程假死与卡死问题，实现严格单次执行、2.5 秒超时熔断与全效备选快捷演示面板。
+## 问题原因分析
 
-## User Review & Critical Decisions
+通过排查 `src/utils/assignmentParser.ts`，定位到以下两个问题根因：
 
-> [!IMPORTANT]
-> 本方案严格落实彻底解耦与防死锁策略：移除任何 `getUserMedia` 抢占与 `onend` 自动重启机制，新增 2.5s 极速超时熔断保护，并提供气泡式【🎙️ 语音智能识别快捷演示面板】以确保 100% 演示与使用流畅。
-
-- **确定决策 1（移除通道抢占与无限重启）**: 彻底删除 `tryLocalSpeechRecognition` 中的 `getUserMedia` 抢占代码，禁用 `onend` / `onerror` 自动重启逻辑，保证每次点击仅触发单次识别。
-- **确定决策 2（2.5 秒超时熔断器）**: 安卓/移动端点击后启动 2500ms `setTimeout` 熔断计时器。若 2.5 秒内未收到 `onresult`，自动调用 `recognition.abort()` 强制释放，将 `isListening` 重置为 `false`。
-- **确定决策 3（智能面板 + 快捷预设填入）**: 识别超时或网络异常时，自动 `focus()` 唤起手机输入法语音麦克风，并在输入框上方弹出快捷面板，内置 0.8 秒声纹解析动画与 3 个典型预设选项（数据库课程、Java实验报告、高数测验）。
-
----
-
-## 1. Overview & Core Concept
-
-针对国内网络连不通 Google 语音服务器导致的 `network` 静默死锁与 `getUserMedia` 硬件抢占问题：
-1. **防卡死防护网**：单次 `SpeechRecognition` 实例管理，用 `useRef` 保存句柄，重复点击或超时即刻 `abort()`，绝不阻塞主线程。
-2. **2.5s 智能熔断**：移动端拦截 + 2500ms 超时强制强关，保证界面 100% 响应。
-3. **流畅演示保底**：输入框自动 `focus()` + 【🎙️ 语音智能识别快捷演示面板】气泡，点击预设带 0.8 秒声纹解析动画，秒级完成课程/作业要素录入。
+1. **第 2、3、4 条作业被误判为聊天杂音跳过**：
+   - `isChatNoiseLine` 函数中用于过滤群聊昵称+时间戳（如 `张三 14:30`）的正则表达式匹配了小于 25 个字符且以 `HH:mm` 结尾的行。
+   - 当遇到 `Java 实验3 -学习通 截止时间：-26.10.19 8:00` 时，正则误将其当成了发信人时间戳，导致该行被作为聊天杂音过滤；而第 5 条因为字符数超过 25 个避开了该正则。
+2. **Java Web 未映射到 Web编程技术**：
+   - `COURSE_ALIASES['Web编程技术']` 别名列表中缺失 `'Java Web'` / `'JavaWeb'`。
+   - 此外在匹配别名时，`'面向对象程序设计'` 包含了 `'Java'`。如果未优先按别名长度降序匹配，`"Java Web"` 会被先匹配到 `'Java'`，从而错误归类到 Java 课程。
 
 ---
 
-## 2. User Experience & Visual Design
+## Proposed Changes
 
-- **交互体验 (UX)**:
-  - 点击语音按钮：按钮变为带波纹缩放的“正在聆听中...”，同时后台启动 2.5s 超时定时器。
-  - 正常识别：2.5 秒内收到 `onresult`，填入识别文字并重置状态。
-  - 超时/网络报错：2.5 秒到达或捕获 `onerror` 时，瞬时 `abort()`，唤起输入框光标，并在输入框上方展开高颜值黑金风【🎙️ 语音智能识别快捷演示面板】。
-  - 点击快捷预设：显示 0.8s “正在解析声纹要素...” 加载反馈，随后逐字填入并解析课程名、内容与截止时间。
+### `src/utils/assignmentParser.ts`
 
-- **视觉风格 (Visual Identity)**:
-  - 延续深色暗黑基调（`#1f222a` Canvas, `#24262c` Input Card, `#d99a2b` Accent Gold for Demo Banner）。
-  - 气泡面板位于输入框正上方，配备指向箭头与关闭按钮，无缝融入 HomeworkTab 与 TasksTab。
+1. **优化聊天杂音过滤逻辑 (`isChatNoiseLine`)**：
+   - 在时间戳匹配逻辑前，先检查行内是否包含作业/截止相关特征词（如 `截止`、`作业`、`实验`、`任务`、`学习通`、`课堂派`、`PTA` 等）。若包含此类作业特征词，则绝不判为杂音。
 
----
+2. **补全 `Java Web` 课程别名 (`COURSE_ALIASES`)**：
+   - 为 `'Web编程技术'` 添加 `'Java Web'`, `'JavaWeb'`, `'JavaWeb编程'`, `'Java Web程序设计'`。
 
-## 3. Key Product Decisions & Trade-Offs
-
-- **决策 1：为何移除 `getUserMedia` 麦克风预检**
-  - *选择*: 在调用 `webkitSpeechRecognition` 前不再并发调用 `getUserMedia`。
-  - *原因*: 在安卓 Chrome/Edge 上同时占用 Web Audio 麦克风流与 SpeechRecognition 会引发底层 Android AudioRecord 抢占死锁，直接导致 UI 线程卡死。
-
-- **决策 2：为何采用 2.5 秒超时熔断机制**
-  - *选择*: `setTimeout` 设置 2500ms，在 `onresult` 触发时 `clearTimeout`；若超时则 `abort()`。
-  - *原因*: 国内浏览器尝试连接 GMS 语音服务器的 timeout 往往长达 30 秒或挂起，2.5 秒熔断可确保用户体验极速降级至手机输入法或快捷面板。
+3. **优化别名全域长匹配规则 (`parseQuickHomeworkLine`)**：
+   - 收集所有课程名与别名，统一按字符串长度从长到短排序（`b.length - a.length`）。
+   - 确保 `"Java Web"`（长度 8）会在 `"Java"`（长度 4）之前优先被匹配，从而正确归类为 `Web编程技术`。
 
 ---
 
-## 4. Technical Architecture & Data Strategy
+## Verification Plan
 
+### 1. 案例解析验证
+在智能识别框中粘贴用户提供的文本：
+```text
+数据库实验4 在课堂派 距截止时间已不足2天
+Java 实验3 -学习通 截止时间：-26.10.19 8:00
+Java 实验4 -学习通 截止时间：-26.10.19 8:00
+JavaPTA_02字符串 -PTA 截止时间：-26.10.19 8:00
+Java Web 实验三 -学习通：完成任务1 截止时间：-26.10.19 10:00
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        User Clicks Voice Input Button                  │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │
-                       Is Already Listening?
-                      ┌─────────────┴─────────────┐
-                     YES                          NO
-                      │                           │
-          Calls recognition.abort()        Initialize SpeechRecognition
-             Reset isListening=false       Set 2500ms Fuse Timer
-                      │                           │
-                      └─────────────┬─────────────┘
-                                    │
-                     ┌──────────────┴──────────────┐
-                     │ Wait for Result or 2.5s Fuse │
-                     └──────────────┬──────────────┘
-                                    │
-                      Triggered onresult / 2.5s Timeout / onerror
-                                    │
-           ┌────────────────────────┴────────────────────────┐
-        SUCCESS                                          TIMEOUT / ERROR
-           │                                                 │
-   Populate Text Box                               Calls recognition.abort()
-   Clear Fuse Timer                                Focus Input Box (Mobile Soft Keyboard)
-                                                   Populate "Voice Quick Demo Bubble Panel"
-                                                   Click Preset -> 0.8s Voice Wave -> Auto Fill
-```
+验证是否 5 条作业全部被正确解析：
+- **条目 1**：课程 = `数据库概论`，截止时间 = 2 天后
+- **条目 2**：课程 = `面向对象程序设计` (Java)，标题 = `实验3`，截止时间 = `2026-10-19 08:00`
+- **条目 3**：课程 = `面向对象程序设计` (Java)，标题 = `实验4`，截止时间 = `2026-10-19 08:00`
+- **条目 4**：课程 = `面向对象程序设计` (Java)，标题 = `PTA_02字符串`，截止时间 = `2026-10-19 08:00`
+- **条目 5**：课程 = `Web编程技术` (Java Web)，标题 = `实验三 完成任务1`，截止时间 = `2026-10-19 10:00`
 
-### 修改文件范围:
-1. `src/components/VoiceInputModal.tsx`: 重写语音逻辑，增加 2.5 秒熔断器、严格单实例管理、移除 `getUserMedia` 抢占。
-2. `src/components/HomeworkTab.tsx`: 在快捷输入框上方增加【🎙️ 语音智能识别快捷演示面板】气泡与 2.5 秒超时熔断驱动，挂载 3 大预设指令。
-3. `src/components/TasksTab.tsx`: 对应同步 2.5 秒超时熔断与输入框唤起面板支持。
+### 2. 代码质量检查
+- 执行 `lint_applet` 和 `compile_applet` 确保类型检查与打包正常。
