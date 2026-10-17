@@ -38,10 +38,12 @@ function parseDueDateTime(dueStr?: string): { start: string; end: string } | nul
   const trimmed = String(dueStr || '').trim();
   if (!trimmed) return null;
 
-  const m = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:\s+(\d{1,2}):(\d{1,2}))?/.exec(trimmed);
+  const m = /^(\d{2,4})[-/.年](\d{1,2})[-/.月](\d{1,2})[日号]?(?:\s+(\d{1,2}):(\d{1,2}))?/.exec(trimmed);
   if (!m) return null;
 
-  const year = m[1];
+  let yVal = Number(m[1]);
+  if (yVal < 100) yVal += 2000;
+  const year = String(yVal);
   const month = pad2(Number(m[2]));
   const day = pad2(Number(m[3]));
   const hour = m[4] ? Number(m[4]) : 22; // 默认晚 22:00 截止

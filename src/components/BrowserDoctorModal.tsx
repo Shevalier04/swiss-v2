@@ -58,26 +58,7 @@ export const BrowserDoctorModal: React.FC<BrowserDoctorModalProps> = ({
   const [audioTesting, setAudioTesting] = useState(false);
   const [vibrateTesting, setVibrateTesting] = useState(false);
 
-  // Force Offline Speech Recognition Toggle state
-  const [forceOfflineSpeech, setForceOfflineSpeech] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('cs_force_offline_speech') === 'true';
-    } catch {
-      return false;
-    }
-  });
 
-  const handleToggleForceOfflineSpeech = (enabled: boolean) => {
-    setForceOfflineSpeech(enabled);
-    try {
-      localStorage.setItem('cs_force_offline_speech', enabled ? 'true' : 'false');
-    } catch {}
-    if (enabled) {
-      toast('已开启【强制使用本地离线语音转写】！云端异常时将优先使用本地浏览器内核识别。');
-    } else {
-      toast('已恢复默认语音转写设置（云端 AI 优先）。');
-    }
-  };
 
   // Force Notification Fallback Combination Toggle state
   const [forceFallbackNotify, setForceFallbackNotify] = useState<boolean>(() => {
@@ -193,21 +174,7 @@ export const BrowserDoctorModal: React.FC<BrowserDoctorModalProps> = ({
       testActionName: '试听提示蜂鸣音',
     });
 
-    // 2b. Native SpeechRecognition API (浏览器内核离线语音识别)
-    const hasSpeechRec = typeof window !== 'undefined' && !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
-    items.push({
-      id: 'speech_recognition_api',
-      name: '浏览器原生离线语音识别 (webkitSpeechRecognition)',
-      category: 'audio',
-      supported: hasSpeechRec,
-      description: '华为/Chrome 等内核自带的本地离线语音转文字引擎',
-      statusText: hasSpeechRec
-        ? '内核原生支持 ✓'
-        : '当前内核无原生引擎 (依赖云端 AI 识别)',
-      statusLevel: hasSpeechRec ? 'success' : 'warning',
-      fixTip: !hasSpeechRec ? '若当前内核无原生离线引擎，系统将自动录制 16kHz 无损音频并传输至云端双引擎解析' : undefined,
-      testActionName: '测试本地语音转写',
-    });
+
 
     // 3. W3C Notification API (系统通知栏)
     const hasNotification = typeof window !== 'undefined' && 'Notification' in window;
@@ -403,31 +370,7 @@ export const BrowserDoctorModal: React.FC<BrowserDoctorModalProps> = ({
     setTimeout(() => setVibrateTesting(false), 1000);
   };
 
-  // Action: Test Local Native Speech Recognition
-  const handleTestLocalSpeech = () => {
-    if (typeof window === 'undefined') return;
-    const SpeechClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechClass) {
-      toast('当前浏览器内核未集成 webkitSpeechRecognition 离线引擎，云端转写将作为唯一识别通道');
-      return;
-    }
-    try {
-      const rec = new SpeechClass();
-      rec.lang = 'zh-CN';
-      rec.interimResults = true;
-      toast('已启动本地内核语音引擎！请大声说一句测试文本...');
-      rec.start();
-      rec.onresult = (e: any) => {
-        const txt = e.results[0][0].transcript;
-        toast(`【本地内核识别成功】: ${txt}`);
-      };
-      rec.onerror = (e: any) => {
-        toast(`本地语音识别提示: ${e.error || '未检测到明显发音'}`);
-      };
-    } catch (e: any) {
-      toast(`启动失败: ${e.message || '系统接口限制'}`);
-    }
-  };
+
 
   // Compute Overall Rating
   const audioOk = diagnostics.find(d => d.id === 'get_user_media')?.supported;
@@ -566,47 +509,7 @@ export const BrowserDoctorModal: React.FC<BrowserDoctorModalProps> = ({
             </div>
           </div>
 
-          {/* Force Offline Speech Recognition Switch Toggle Card */}
-          <div className="bg-[#161820] border-2 border-[#6b7cff]/50 rounded-xl p-4 space-y-3 shadow-lg">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Mic className="w-4 h-4 text-[#6b7cff]" />
-                <h4 className="font-bold text-sm text-[#e9e4d8]">
-                  强制使用离线语音转写尝试 (华为/特殊内核应急开关)
-                </h4>
-              </div>
 
-              <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                <input
-                  type="checkbox"
-                  checked={forceOfflineSpeech}
-                  onChange={e => handleToggleForceOfflineSpeech(e.target.checked)}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-[#2a2d38] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#6b7cff]"></div>
-              </label>
-            </div>
-
-            <p className="text-[11.5px] text-[#a8a399] leading-relaxed">
-              当您在华为浏览器或特殊弱网环境下遇到云端 AI 音频识别接口响应失败时，<strong>开启此开关允许直接在本地尝试调用当前浏览器内核自带的 WebKit 语音识别引擎</strong>（<code className="text-[#8ea4ff] font-mono px-1 py-0.5 rounded bg-white/5">webkitSpeechRecognition</code>）进行基础离线语音转写。
-            </p>
-
-            {forceOfflineSpeech ? (
-              <div className="bg-[#6b7cff]/15 border border-[#6b7cff]/40 p-2.5 rounded-lg text-[11px] text-[#8ea4ff] flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <CheckCircle className="w-4 h-4 shrink-0 text-[#6b7cff]" />
-                  <span>离线语音备用模式已开启：云端转写异常时自动降级为本地内核转写</span>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-[#101217] border border-[#262832] p-2.5 rounded-lg text-[11px] text-[#8f8b80] flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
-                  <Info className="w-3.5 h-3.5 shrink-0 text-[#8f8b80]" />
-                  <span>默认推荐：优先采用 16kHz 无损录音并传输至云端双引擎解析，失败时自动尝试本地转写</span>
-                </div>
-              </div>
-            )}
-          </div>
 
           {/* Force Notification Fallback Switch Toggle Card */}
           <div className="bg-[#161820] border-2 border-[#ff7043]/50 rounded-xl p-4 space-y-3 shadow-lg">
