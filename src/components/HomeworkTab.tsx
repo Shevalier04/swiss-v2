@@ -97,38 +97,54 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
     }
   }, [courseNames, selectedCourse]);
 
-  // Platform detector helper
+  // Platform detector helper mapping keywords to uploaded images 1, 2, 3, 4 respectively
   const getPlatformBadge = (text: string) => {
     if (/PTA/i.test(text)) {
       return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 shrink-0" title="平台: PTA">
-          <span>💻</span>
-          <span>PTA</span>
-        </span>
+        <div className="w-10 h-10 rounded-xl bg-white border border-blue-200 shadow-sm flex items-center justify-center shrink-0 select-none align-middle relative overflow-hidden p-1.5" title="平台: PTA">
+          <svg className="w-full h-full text-blue-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="2" width="16" height="12" rx="2.5" fill="#2563eb" fillOpacity="0.1" stroke="#2563eb" strokeWidth="1.8"/>
+            <polygon points="7,14 11,14 9,17" fill="#2563eb" stroke="#2563eb" strokeWidth="1" strokeLinejoin="round"/>
+            <path d="M5 6l-2.5 2L5 10" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M11 6l2.5 2L11 10" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <line x1="9" y1="5.5" x2="7" y2="10.5" stroke="#2563eb" strokeWidth="2" strokeLinecap="round"/>
+            <rect x="3" y="16" width="16" height="5" rx="1" fill="#2563eb" fillOpacity="0.15" stroke="#2563eb" strokeWidth="1.5"/>
+            <line x1="11" y1="16" x2="11" y2="21" stroke="#2563eb" strokeWidth="1.5"/>
+            <line x1="6" y1="18.5" x2="9" y2="18.5" stroke="#2563eb" strokeWidth="1.2" strokeLinecap="round"/>
+            <line x1="13" y1="18.5" x2="16" y2="18.5" stroke="#2563eb" strokeWidth="1.2" strokeLinecap="round"/>
+          </svg>
+        </div>
       );
     }
     if (/课堂派/i.test(text)) {
       return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0" title="平台: 课堂派">
-          <span>🏫</span>
-          <span>课堂派</span>
-        </span>
+        <div className="w-10 h-10 rounded-xl bg-[#1890ff] shadow-sm flex items-center justify-center shrink-0 select-none align-middle relative overflow-hidden" title="平台: 课堂派">
+          <span className="text-white font-black text-xl tracking-tighter drop-shadow-xs z-10 font-sans">A⁺</span>
+        </div>
       );
     }
     if (/学习通/i.test(text)) {
       return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0" title="平台: 学习通">
-          <span>📚</span>
-          <span>学习通</span>
-        </span>
+        <div className="w-10 h-10 rounded-xl bg-[#e53935] shadow-sm flex items-center justify-center shrink-0 select-none align-middle relative overflow-hidden p-1" title="平台: 超星学习通">
+          <svg className="w-full h-full text-white" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="18,2 19.1,5.5 22.5,6.3 19.8,8.7 20.5,12.3 18,10.5 15.5,12.3 16.2,8.7 13.5,6.3 16.9,5.5" />
+            <path d="M1 22C1 16 5 9 13.8 6.5L13.5 5.5C4 8 0 16 0 22H1Z" fill="white" fillOpacity="0.75" />
+            <path d="M4 22C4 17 8 11 14.5 7.5L14.2 6.5C8 9 3 17 3 22H4Z" fill="white" fillOpacity="0.85" />
+            <path d="M7 22C7 18 10 13 15.2 8.5L15 7.5C10 10 6 18 6 22H7Z" fill="white" fillOpacity="0.95" />
+            <path d="M10 22C10 19 12 14.5 16 9.5L15.8 8.5C12 11 9 19 9 22H10Z" fill="white" />
+          </svg>
+        </div>
       );
     }
     if (/明理云盘|云盘/i.test(text)) {
       return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold rounded bg-purple-500/15 text-purple-400 border border-purple-500/30 shrink-0" title="平台: 明理云盘">
-          <span>☁️</span>
-          <span>明理云盘</span>
-        </span>
+        <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-center shrink-0 select-none align-middle relative overflow-hidden p-1.5" title="平台: 明理云盘 (图4)">
+          <svg className="w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 17l5-8 4 4 3-3 6 7H2z" fill="#3b82f6" fillOpacity="0.2"/>
+            <path d="M12 12l3-3 6 7H3l6-4z" stroke="#2563eb" strokeWidth="2"/>
+            <circle cx="17" cy="8" r="2.5" fill="#f97316"/>
+          </svg>
+        </div>
       );
     }
     return null;
@@ -314,22 +330,36 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
     });
   }, [effectiveHomework, filter, selectedCourseFilter]);
 
-  // Grouped list by course
+  // Grouped list by course with true course-wide pending counts
   const groupedHomework = useMemo(() => {
-    const groups: { courseName: string; items: Homework[]; pendingCount: number }[] = [];
-    const courseMap = new Map<string, Homework[]>();
+    const groups: { courseName: string; items: Homework[]; pendingCount: number; totalCount: number }[] = [];
+    const allCourseMap = new Map<string, Homework[]>();
 
-    for (const h of filteredList) {
+    for (const h of effectiveHomework) {
       const cName = h.course || '常规课程';
-      if (!courseMap.has(cName)) {
-        courseMap.set(cName, []);
+      if (!allCourseMap.has(cName)) {
+        allCourseMap.set(cName, []);
       }
-      courseMap.get(cName)!.push(h);
+      allCourseMap.get(cName)!.push(h);
     }
 
-    for (const [courseName, items] of courseMap.entries()) {
-      const pendingCount = items.filter(it => !it.done).length;
-      groups.push({ courseName, items, pendingCount });
+    for (const [courseName, allItems] of allCourseMap.entries()) {
+      if (selectedCourseFilter !== 'all' && courseName !== selectedCourseFilter) {
+        continue;
+      }
+
+      const items = allItems.filter(h => {
+        if (filter === 'todo' && h.done) return false;
+        if (filter === 'done' && !h.done) return false;
+        return true;
+      });
+
+      if (items.length === 0) continue;
+
+      const pendingCount = allItems.filter(it => !it.done).length;
+      const totalCount = allItems.length;
+
+      groups.push({ courseName, items, pendingCount, totalCount });
     }
 
     // Sort groups: courses with pending items first, then by course name
@@ -339,7 +369,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
     });
 
     return groups;
-  }, [filteredList]);
+  }, [effectiveHomework, filter, selectedCourseFilter]);
 
   const pendingCount = useMemo(() => {
     return effectiveHomework.filter(h => !h.done).length;
@@ -616,23 +646,27 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
             t => !t.done && (t.title.trim() === taskTitle.trim() || (item.title && t.title.trim() === item.title.trim()))
           );
 
-          return (
+           return (
             <div
               key={item.id}
-              className={`flex items-start gap-3 py-3 -mx-2 px-2.5 rounded transition-all duration-150 hover:bg-[#20222a]/70 group/row ${
+              className={`flex items-center gap-3.5 py-3 -mx-2 px-2.5 rounded transition-all duration-150 hover:bg-[#20222a]/70 group/row ${
                 item.done ? 'opacity-40' : ''
               }`}
             >
-              {/* Left interactive trigger zone: Index + Enlarged Checkbox */}
+              {/* Far left: Large Platform Icon + Index underneath */}
+              <div className="shrink-0 flex flex-col items-center gap-1">
+                {getPlatformBadge(`${item.course} ${item.title}`)}
+                <span className="font-editorial italic text-[11px] text-[#63605a] group-hover/row:text-[#8f8b80] transition-colors select-none leading-none">
+                  {pad2(idx + 1)}
+                </span>
+              </div>
+
+              {/* Checkbox trigger */}
               <div
-                className="flex items-center gap-2 shrink-0 pt-0.5 cursor-pointer select-none touch-manipulation group/check"
+                className="shrink-0 cursor-pointer select-none touch-manipulation group/check px-1"
                 onClick={() => handleToggleHomework(item.id)}
                 title={item.done ? '点击标记为未完成' : '点击标记为已完成'}
               >
-                <span className="font-editorial italic text-xs text-[#63605a] group-hover/check:text-[#8f8b80] w-5 text-right transition-colors select-none">
-                  {pad2(idx + 1)}
-                </span>
-
                 <button
                   type="button"
                   onClick={(e) => {
@@ -664,7 +698,6 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
                 title={item.done ? '点击标记为未完成' : '点击标记为已完成'}
               >
                 <div className="flex items-center gap-2 flex-wrap">
-                  {getPlatformBadge(`${item.course} ${item.title}`)}
                   <span className="font-bold text-xs px-1.5 py-0.5 bg-[#2a2d36] text-[#6b7cff] border border-[#6b7cff]/30 rounded group-hover/content:border-[#6b7cff]/60 transition-colors">
                     {item.course}
                   </span>

@@ -294,13 +294,21 @@ export const api = {
       const headers = targetUser ? { 'X-Username': targetUser } : undefined;
       const res = await request<any>(endpoint, { headers });
       const list = res.assignments || res.homework || (Array.isArray(res) ? res : []);
-      return list.map((item: any) => ({
-        id: Number(item.id),
-        course: String(item.course || item.course_name || '常规课程'),
-        title: String(item.title || ''),
-        due: item.due || item.deadline || '',
-        done: Boolean(item.completed !== undefined ? item.completed : item.done),
-      }));
+      const seenIds = new Set<number>();
+      return list.map((item: any, idx: number) => {
+        let hid = Number(item.id);
+        if (!hid || seenIds.has(hid) || isNaN(hid)) {
+          hid = Date.now() * 1000 + idx + Math.floor(Math.random() * 10000);
+        }
+        seenIds.add(hid);
+        return {
+          id: hid,
+          course: String(item.course || item.course_name || '常规课程'),
+          title: String(item.title || ''),
+          due: item.due || item.deadline || '',
+          done: Boolean(item.completed !== undefined ? item.completed : item.done),
+        };
+      });
     } catch (e: any) {
       console.error('获取作业列表失败:', e);
       return [];

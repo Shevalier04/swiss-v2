@@ -1,6 +1,6 @@
 {
-  "summary": "制定实现作业可编辑功能的实施计划（包括前端API、后端API、编辑弹窗组件以及作业列表中的编辑入口）。",
-  "updatedAt": "2026-10-17T15:52:43.219748440Z",
+  "summary": "根据用户上传的截图，全面精细调整 HomeworkTab 中的四大平台（课堂派、超星学习通、PTA、明理云盘）图标视觉细节。",
+  "updatedAt": "2026-10-17T16:17:10.805931862Z",
   "requestFeedback": true,
   "userFacing": true
 }
