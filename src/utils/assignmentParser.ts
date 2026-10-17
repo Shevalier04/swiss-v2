@@ -88,7 +88,7 @@ export const COURSE_ALIASES: Record<string, string[]> = {
   '数据结构': ['DS', '数据结构与算法', '算法与数据结构', '算法设计与分析', '算法'],
   '数据库概论': ['数据库', '数据库系统', '数据库原理', 'SQL', 'DB', '数据库系统概论'],
   '软件工程导论': ['软工', '软件工程', '软工导论', '软件工程概论'],
-  'Web编程技术': ['Web', 'Web编程', '前端', 'Web前端', '网页制作', 'JavaScript', 'HTML', 'Web技术', '网页设计', 'Java Web', 'JavaWeb', 'JavaWeb编程', 'Java Web程序设计'],
+  'Web编程技术': ['Web', 'Web编程', '前端', 'Web前端', '网页制作', 'JavaScript', 'HTML', 'Web技术', '网页设计', 'Java Web', 'JavaWeb', 'java web', 'javaweb', 'JAVA WEB', 'Java-Web', 'java-web', 'Java_Web', 'JavaWeb编程', 'Java Web程序设计'],
   '毛泽东思想和中国特色社会主义理论体系概论': ['毛概', '毛特', '毛中特'],
   '马克思主义基本原理': ['马原', '马克思主义原理'],
   '中国近现代史纲要': ['近代史', '史纲', '纲要', '现代史'],

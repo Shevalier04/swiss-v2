@@ -415,16 +415,16 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
         {showManualForm && (
           <form
             onSubmit={handleManualAdd}
-            className="pt-2.5 mt-2 border-t border-[#33363d] grid grid-cols-1 sm:grid-cols-3 gap-2.5 animate-fade-in"
+            className="pt-2.5 mt-2 border-t border-[#33363d] grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end animate-fade-in"
           >
-            <div>
+            <div className="md:col-span-3">
               <label className="block text-[9.5px] font-bold tracking-wider text-[#8f8b80] mb-1">
                 选择课程
               </label>
               <select
                 value={selectedCourse}
                 onChange={e => setSelectedCourse(e.target.value)}
-                className="w-full bg-[#181a1f] border border-[#33363d] text-xs text-[#e9e4d8] py-1.5 px-2 rounded outline-none"
+                className="w-full bg-[#181a1f] border border-[#33363d] text-xs text-[#e9e4d8] py-1.5 px-2 rounded outline-none cursor-pointer focus:border-[#6b7cff]"
               >
                 {courseNames.map(name => (
                   <option key={name} value={name} className="bg-[#1d1f24] text-[#e9e4d8]">
@@ -434,7 +434,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
               </select>
             </div>
 
-            <div>
+            <div className="md:col-span-4">
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-[9.5px] font-bold tracking-wider text-[#8f8b80]">
                   截止时间 (精确到小时)
@@ -467,26 +467,35 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
               </div>
             </div>
 
-            <div>
+            <div className="md:col-span-3">
               <label className="block text-[9.5px] font-bold tracking-wider text-[#8f8b80] mb-1">
                 作业内容
               </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={manualTitle}
-                  onChange={e => setManualTitle(e.target.value)}
-                  placeholder="如：第3章课后习题"
-                  className="flex-1 bg-[#181a1f] border border-[#33363d] text-xs text-[#e9e4d8] py-1 px-2 rounded outline-none"
-                />
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-3 py-1 bg-[#6b7cff] hover:bg-[#5868e6] text-white font-bold text-xs rounded transition-colors cursor-pointer shrink-0"
-                >
-                  添加
-                </button>
-              </div>
+              <input
+                type="text"
+                value={manualTitle}
+                onChange={e => setManualTitle(e.target.value)}
+                placeholder="如：第3章课后习题"
+                className="w-full bg-[#181a1f] border border-[#33363d] focus:border-[#6b7cff] text-xs text-[#e9e4d8] py-1.5 px-2 rounded outline-none"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <button
+                type="submit"
+                disabled={submitting || (!manualTitle.trim() && !manualDueDate)}
+                className="w-full py-1.5 px-3 bg-[#6b7cff] hover:bg-[#5868e6] text-white font-bold text-xs sm:text-sm rounded transition-all cursor-pointer shadow flex items-center justify-center gap-1 shrink-0 disabled:opacity-40 active:scale-95"
+                title="保存作业至数据库"
+              >
+                {submitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4" />
+                    <span>添加</span>
+                  </>
+                )}
+              </button>
             </div>
           </form>
         )}
