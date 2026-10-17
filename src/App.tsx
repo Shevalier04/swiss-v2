@@ -20,6 +20,7 @@ import { AdminTerminalModal } from './components/AdminTerminalModal';
 import { ReminderToast } from './components/ReminderToast';
 import { SundayEveModal } from './components/SundayEveModal';
 import { DataManagementModal } from './components/DataManagementModal';
+import { BrowserDoctorModal } from './components/BrowserDoctorModal';
 
 import {
   CalendarDays,
@@ -82,6 +83,7 @@ export default function App() {
   const [pdfFileToImport, setPdfFileToImport] = useState<File | null>(null);
   const [isAdminTerminalOpen, setIsAdminTerminalOpen] = useState(false);
   const [isDataManagementOpen, setIsDataManagementOpen] = useState(false);
+  const [isDoctorModalOpen, setIsDoctorModalOpen] = useState(false);
 
   // Active floating reminder toast
   const [activeReminderCourse, setActiveReminderCourse] = useState<Course | null>(null);
@@ -201,6 +203,12 @@ export default function App() {
             playReminderBeep();
           }
 
+          if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+            try {
+              navigator.vibrate([300, 150, 300, 150, 400]);
+            } catch {}
+          }
+
           if (remindSettings.sys && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
             try {
               new Notification(`还有 ${left} 分钟上课 · ${c.name}`, {
@@ -283,6 +291,11 @@ export default function App() {
     }
     if (remindSettings.sound) {
       playReminderBeep();
+    }
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate([250, 100, 250]);
+      } catch {}
     }
     if (remindSettings.sys && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       try {
@@ -721,16 +734,27 @@ export default function App() {
               <span className="text-[#45474e]">·</span>
               <span>{courses.length}课 / {homework.length}作业 / {tasks.length}任务</span>
             </div>
-            {currentUser.role === 'admin' && (
+            <div className="flex items-center gap-1.5">
               <button
-                onClick={() => setIsDataManagementOpen(true)}
-                className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold text-[#6b7cff] hover:text-white hover:bg-[#6b7cff]/30 transition-all cursor-pointer border border-[#6b7cff]/30 active:scale-95"
-                title="数据管理与一键导入 (管理员)"
+                type="button"
+                onClick={() => setIsDoctorModalOpen(true)}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold text-[#8ea4ff] hover:text-white hover:bg-[#6b7cff]/30 transition-all cursor-pointer border border-[#6b7cff]/30 active:scale-95"
+                title="浏览器能力诊断中心"
               >
-                <Database className="w-2.5 h-2.5" />
-                <span>数据管理</span>
+                <span>内核诊断</span>
               </button>
-            )}
+              {currentUser.role === 'admin' && (
+                <button
+                  type="button"
+                  onClick={() => setIsDataManagementOpen(true)}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold text-[#6b7cff] hover:text-white hover:bg-[#6b7cff]/30 transition-all cursor-pointer border border-[#6b7cff]/30 active:scale-95"
+                  title="数据管理与一键导入 (管理员)"
+                >
+                  <Database className="w-2.5 h-2.5" />
+                  <span>数据管理</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -825,6 +849,7 @@ export default function App() {
               onClearData={handleClearData}
               onSelectPdfFile={f => setPdfFileToImport(f)}
               onUpdateUser={u => setCurrentUser(u)}
+              onOpenDoctor={() => setIsDoctorModalOpen(true)}
               toast={showToast}
             />
           )}
@@ -850,6 +875,7 @@ export default function App() {
               courses={courses}
               onTriggerTestReminder={handleTriggerTestReminder}
               onTriggerSundayTestReminder={handleTriggerSundayTestReminder}
+              onOpenDoctor={() => setIsDoctorModalOpen(true)}
               toast={showToast}
             />
           )}
@@ -1013,6 +1039,13 @@ export default function App() {
           toast={showToast}
         />
       )}
+
+      {/* Browser Doctor Modal */}
+      <BrowserDoctorModal
+        isOpen={isDoctorModalOpen}
+        onClose={() => setIsDoctorModalOpen(false)}
+        toast={showToast}
+      />
 
       {/* Toast Notification */}
       {toastMsg && (

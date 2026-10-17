@@ -18,10 +18,15 @@ import {
   Activity,
   ShieldCheck,
   RefreshCw,
+  Globe,
+  Copy,
+  Check,
+  ExternalLink,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { parseQuickHomeworkLine, ParsedQuickHomework } from '../utils/assignmentParser';
 import { startWavRecording, WavRecorderInstance } from '../utils/wavRecorder';
+import { BrowserDoctorModal } from './BrowserDoctorModal';
 
 export interface VoiceInputModalProps {
   isOpen: boolean;
@@ -61,6 +66,27 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
   const [audioLevel, setAudioLevel] = useState<number>(0);
   const [permissionState, setPermissionState] = useState<'prompt' | 'granted' | 'denied'>('prompt');
   const [isRequestingPerm, setIsRequestingPerm] = useState(false);
+  const [showDoctorModal, setShowDoctorModal] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
+
+  const handleCopyUrl = () => {
+    if (typeof window === 'undefined') return;
+    const url = window.location.href;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(url)
+        .then(() => {
+          setCopiedUrl(true);
+          toast('课表网址已成功复制！请在手机自带浏览器（如华为/小米/Chrome）中粘贴打开。');
+          setTimeout(() => setCopiedUrl(false), 2500);
+        })
+        .catch(() => {
+          prompt('请复制当前课表网址并在手机自带浏览器打开：', url);
+        });
+    } else {
+      prompt('请复制当前课表网址并在手机自带浏览器打开：', url);
+    }
+  };
 
   const wavRecorderRef = useRef<WavRecorderInstance | null>(null);
   const activeStreamRef = useRef<MediaStream | null>(null);
@@ -509,31 +535,60 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
           {errorMsg && (
             <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-300 flex items-start gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
-              <div className="flex-1 space-y-1">
+              <div className="flex-1 space-y-2">
                 <div>{errorMsg}</div>
-                <button
-                  type="button"
-                  onClick={() => setShowMobileHelp(!showMobileHelp)}
-                  className="text-[#6b7cff] hover:underline flex items-center gap-1 text-[11px] font-bold cursor-pointer"
-                >
-                  <Smartphone className="w-3 h-3" />
-                  <span>系统未弹出授权？查看手动排查指引</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowDoctorModal(true)}
+                    className="px-2.5 py-1 bg-[#6b7cff]/20 hover:bg-[#6b7cff]/30 border border-[#6b7cff]/50 text-[#8ea4ff] hover:text-white rounded text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Globe className="w-3 h-3 text-[#6b7cff]" />
+                    <span>打开浏览器全项检测与设置指引</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCopyUrl}
+                    className="px-2.5 py-1 bg-[#242732] hover:bg-[#323646] border border-[#3e4254] text-[#e9e4d8] rounded text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Copy className="w-3 h-3 text-[#a8a399]" />
+                    <span>{copiedUrl ? '已复制网址！' : '一键复制网址切换自带浏览器'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowMobileHelp(!showMobileHelp)}
+                    className="text-[#8f8b80] hover:text-[#e9e4d8] underline text-[11px] cursor-pointer ml-auto"
+                  >
+                    {showMobileHelp ? '收起排查' : '常见排查指引'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
           {/* Streamlined Mobile Microphone Troubleshooting Accordion */}
           {showMobileHelp && (
-            <div className="bg-[#16181d] border border-[#2e313b] rounded-lg p-3 text-[11.5px] text-[#a8a399] space-y-2">
-              <div className="font-bold text-[#e9e4d8] flex items-center gap-1.5">
-                <Smartphone className="w-3.5 h-3.5 text-[#6b7cff]" />
-                <span>各手机浏览器麦克风快速解封：</span>
+            <div className="bg-[#16181f] border border-[#2e313b] rounded-lg p-3 text-[11.5px] text-[#a8a399] space-y-2.5">
+              <div className="font-bold text-[#e9e4d8] flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Smartphone className="w-3.5 h-3.5 text-[#6b7cff]" />
+                  <span>各手机浏览器麦克风快速解封：</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDoctorModal(true)}
+                  className="text-[#6b7cff] hover:underline text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <Globe className="w-3 h-3" />
+                  <span>一键全项自检 →</span>
+                </button>
               </div>
               <p className="text-[#8f8b80] leading-relaxed">
                 • <strong>华为/鸿蒙浏览器</strong>：在最上方网址栏点击「锁头🔒 / 盾牌」➔ 点击「网站设置」➔ 开启「麦克风」允许。<br />
                 • <strong>苹果 iPhone (Safari)</strong>：手机「设置」➔「Safari 浏览器」➔「麦克风」切换为「允许」。<br />
-                • <strong>微信/QQ</strong>：请点击右上角【···】选择【在浏览器打开】。
+                • <strong>夸克浏览器 / 微信</strong>：移动端精简了部分多媒体通道，推荐一键复制网址在手机自带系统浏览器打开。
               </p>
             </div>
           )}
@@ -620,13 +675,23 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
 
         {/* Footer Actions */}
         <div className="px-5 py-3 border-t border-[#2b2d35] bg-[#16181d] flex items-center justify-between gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-1.5 text-xs text-[#8f8b80] hover:text-[#e9e4d8] cursor-pointer"
-          >
-            取消
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-2.5 py-1.5 text-xs text-[#8f8b80] hover:text-[#e9e4d8] cursor-pointer"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowDoctorModal(true)}
+              className="text-[11px] text-[#6b7cff] hover:text-[#8ea4ff] flex items-center gap-1 cursor-pointer font-medium"
+            >
+              <Globe className="w-3.5 h-3.5" />
+              <span>浏览器能力诊断</span>
+            </button>
+          </div>
 
           <div className="flex items-center gap-2">
             <button
@@ -661,6 +726,13 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Browser Doctor Modal */}
+      <BrowserDoctorModal
+        isOpen={showDoctorModal}
+        onClose={() => setShowDoctorModal(false)}
+        toast={toast}
+      />
     </div>
   );
 };

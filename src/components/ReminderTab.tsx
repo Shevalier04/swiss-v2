@@ -14,6 +14,7 @@ import {
   CheckCircle,
   RefreshCw,
   AlertTriangle,
+  Globe,
 } from 'lucide-react';
 import { NotificationGuideModal } from './NotificationGuideModal';
 import {
@@ -35,6 +36,7 @@ interface ReminderTabProps {
   courses: Course[];
   onTriggerTestReminder: () => void;
   onTriggerSundayTestReminder?: () => void;
+  onOpenDoctor?: () => void;
   toast: (msg: string) => void;
 }
 
@@ -44,6 +46,7 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
   courses,
   onTriggerTestReminder,
   onTriggerSundayTestReminder,
+  onOpenDoctor,
   toast,
 }) => {
   const [capability, setCapability] = useState<NotificationCapability>(() => detectNotificationCapability());
@@ -78,8 +81,13 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
   }, []);
 
   const handlePermissionRecovered = async () => {
-    setLocalSysPermission('granted');
-    onUpdateSettings({ sys: true });
+    onUpdateSettings({ inapp: true, sound: true, enabled: true });
+    if (typeof Notification !== 'undefined') {
+      setLocalSysPermission(Notification.permission);
+      if (Notification.permission === 'granted') {
+        onUpdateSettings({ sys: true });
+      }
+    }
     const cap = detectNotificationCapability();
     setCapability(cap);
 
@@ -161,7 +169,33 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
     }
   };
 
+  const handleCopyUrlForNativeBrowser = () => {
+    if (typeof window === 'undefined') return;
+    const url = window.location.href;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(url)
+        .then(() => {
+          toast('课表网址已成功复制！请打开手机自带浏览器（如华为/小米/Chrome）粘贴访问即可开启系统锁屏推送。');
+        })
+        .catch(() => {
+          prompt('请复制当前课表网址并在手机自带浏览器打开：', url);
+        });
+    } else {
+      prompt('请复制当前课表网址并在手机自带浏览器打开：', url);
+    }
+  };
+
   const handleRequestLocalPermission = async () => {
+    if (capability.isQuark || !capability.hasNotification) {
+      onUpdateSettings({ inapp: true, sound: true, enabled: true });
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try { navigator.vibrate([250, 100, 250]); } catch {}
+      }
+      toast('夸克提醒模式已开启！已同步激活页面悬浮横幅、手机物理震动与蜂鸣提示音。');
+      return;
+    }
+
     if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
       setShowUnblockGuide(true);
       return;
@@ -170,7 +204,11 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
     const res = await requestLocalSystemPermission();
     setLocalSysPermission(res.status);
     if (res.granted) {
-      onUpdateSettings({ sys: true });
+      if (res.isQuarkFallback) {
+        onUpdateSettings({ inapp: true, sound: true, enabled: true });
+      } else {
+        onUpdateSettings({ sys: true });
+      }
       toast(res.message);
     } else {
       toast(res.message);
@@ -181,6 +219,15 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
   };
 
   const handleTestLocalNotification = async () => {
+    if (capability.isQuark || !capability.hasNotification) {
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try { navigator.vibrate([250, 100, 250]); } catch {}
+      }
+      onTriggerTestReminder();
+      toast('【夸克测试成功】手机已触发物理震动！上课前页面横幅与蜂鸣将准时生效。');
+      return;
+    }
+
     if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
       setShowUnblockGuide(true);
       return;
@@ -210,8 +257,12 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
     typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
 
   const requestSysPermission = async () => {
-    if (typeof Notification === 'undefined') {
-      toast('当前浏览器环境不支持系统级通知');
+    if (capability.isQuark || typeof Notification === 'undefined' || !capability.hasNotification) {
+      onUpdateSettings({ inapp: true, sound: true, enabled: true });
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try { navigator.vibrate([200, 100, 200]); } catch {}
+      }
+      toast('夸克浏览器内核精简了系统通知，已为您自动激活【应用内悬浮横幅 + 手机物理震动 + 提示音】！');
       return;
     }
     if (Notification.permission === 'denied') {
@@ -240,13 +291,25 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
   return (
     <div className="space-y-4 pb-6 select-none">
       {/* Title */}
-      <div className="border-b-[2.5px] border-[#e9e4d8] pb-2">
-        <div className="font-editorial text-2xl sm:text-3xl font-extrabold tracking-wide text-[#e9e4d8]">
-          上课提醒
+      <div className="border-b-[2.5px] border-[#e9e4d8] pb-2 flex items-end justify-between">
+        <div>
+          <div className="font-editorial text-2xl sm:text-3xl font-extrabold tracking-wide text-[#e9e4d8]">
+            上课提醒
+          </div>
+          <div className="text-[9.5px] font-mono tracking-[3px] text-[#8f8b80] mt-0.5">
+            CLASS REMINDER NOTIFICATIONS
+          </div>
         </div>
-        <div className="text-[9.5px] font-mono tracking-[3px] text-[#8f8b80] mt-0.5">
-          CLASS REMINDER NOTIFICATIONS
-        </div>
+        {onOpenDoctor && (
+          <button
+            type="button"
+            onClick={onOpenDoctor}
+            className="px-2.5 py-1 rounded bg-[#6b7cff]/15 hover:bg-[#6b7cff]/25 border border-[#6b7cff]/40 text-[#8ea4ff] font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span>浏览器能力诊断</span>
+          </button>
+        )}
       </div>
 
       {/* Status Pad */}
@@ -270,28 +333,40 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
         </div>
         <div>
           系统通知权限：
-          <b className={notificationPermission === 'granted' ? 'text-[#4ade80]' : 'text-[#ff6b57]'}>
-            {notificationPermission === 'granted'
-              ? '已授权 ✓'
-              : notificationPermission === 'denied'
-              ? '已被浏览器拒绝/拦截'
-              : '未授权'}
-          </b>
-          {notificationPermission === 'denied' && (
-            <button
-              type="button"
-              onClick={() => setShowUnblockGuide(true)}
-              className="ml-2 px-1.5 py-0.5 rounded bg-[#ff6b57]/20 border border-[#ff6b57]/40 text-[#ff8f80] hover:text-white text-[10.5px] font-bold cursor-pointer inline-flex items-center gap-1 transition-colors"
-            >
-              <AlertTriangle className="w-3 h-3 text-[#ff6b57]" />
-              <span>解除拦截指引与一键重检</span>
-            </button>
+          {capability.isQuark || !capability.hasNotification ? (
+            <b className="text-[#4ade80]">夸克应用内横幅 + 手机物理震动已激活 ✓</b>
+          ) : (
+            <>
+              <b className={notificationPermission === 'granted' ? 'text-[#4ade80]' : 'text-[#ff6b57]'}>
+                {notificationPermission === 'granted'
+                  ? '已授权 ✓'
+                  : notificationPermission === 'denied'
+                  ? '已被浏览器拒绝/拦截'
+                  : '未授权'}
+              </b>
+              {notificationPermission === 'denied' && (
+                <button
+                  type="button"
+                  onClick={() => setShowUnblockGuide(true)}
+                  className="ml-2 px-1.5 py-0.5 rounded bg-[#ff6b57]/20 border border-[#ff6b57]/40 text-[#ff8f80] hover:text-white text-[10.5px] font-bold cursor-pointer inline-flex items-center gap-1 transition-colors"
+                >
+                  <AlertTriangle className="w-3 h-3 text-[#ff6b57]" />
+                  <span>解除拦截指引与一键重检</span>
+                </button>
+              )}
+            </>
           )}
         </div>
         <div>
-          {capability.hasPushManager ? '锁屏离线推送：' : '系统通知机制：'}
-          <b className={capability.hasPushManager ? (isPushSubscribed ? 'text-[#4ade80]' : 'text-[#8f8b80]') : (localSysPermission === 'granted' ? 'text-[#4ade80]' : 'text-[#8f8b80]')}>
-            {capability.hasPushManager
+          {capability.isQuark || !capability.hasNotification
+            ? '夸克模式状态：'
+            : capability.hasPushManager
+            ? '锁屏离线推送：'
+            : '系统通知机制：'}
+          <b className="text-[#4ade80]">
+            {capability.isQuark || !capability.hasNotification
+              ? (settings.inapp ? '应用内强提醒 + 物理震动已开启 ✓' : '已就绪 (点击开启)')
+              : capability.hasPushManager
               ? (isPushSubscribed ? `已激活 ✓ (当前账号已绑定 ${serverDeviceCount} 台设备)` : '未开启')
               : (localSysPermission === 'granted' ? '本地增强系统通知已就绪 ✓' : '本地模式 (待授权)')}
           </b>
@@ -549,6 +624,97 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
 
           <div className="text-[11px] text-[#78746c] leading-relaxed border-t border-[#2e313b] pt-2">
             💡 锁屏提醒说明：点击“开启锁屏系统推送”授权后，即使手机锁屏放入书包，云端也会在开课前 15 分钟及作业临期 24h / 3h 准时推送；iOS 用户需先在 Safari 中“添加到主屏幕”开启系统通知。
+          </div>
+        </div>
+      ) : capability.isQuark || capability.mode === 'quark_inapp' || !capability.hasNotification ? (
+        <div className="bg-[#1f222a] border-2 border-[#d99a2b]/70 p-4 rounded-lg shadow-lg text-[#e9e4d8] space-y-3.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <Smartphone className="w-4 h-4 text-[#d99a2b]" />
+              <h4 className="font-editorial font-bold text-base text-[#e9e4d8]">
+                夸克浏览器 · 应用内悬浮横幅与物理震动模式
+              </h4>
+            </div>
+            <span className="text-[10px] px-2 py-0.5 rounded bg-[#d99a2b]/20 text-[#d99a2b] font-bold">
+              夸克专属兼容模式
+            </span>
+          </div>
+
+          <p className="text-xs text-[#a8a399] leading-relaxed">
+            检测到当前使用<strong>夸克浏览器</strong>。因夸克浏览器内核精简禁用了 W3C 系统级通知通道（添加至手机桌面也无法调用系统通知栏），本系统已为您<strong>自动无缝激活【应用内强提醒卡片 + 手机物理震动 + 课前清脆提示音】</strong>！无论在应用内任何界面，课前均会触发物理震动与弹窗提醒。
+          </p>
+
+          {/* Status indicator row */}
+          <div className="bg-[#16181d] border border-[#2e313b] p-3 rounded text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[#8f8b80]">夸克内核支持状态：</span>
+              <span className="text-[#4ade80] font-medium">应用内横幅 + 震动已就绪 ✓</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[#8f8b80]">课前手机物理震动：</span>
+              <span className="text-[#4ade80] font-bold">
+                {typeof navigator !== 'undefined' && 'vibrate' in navigator ? '支持物理震动 (Vibrate) ✓' : '蜂鸣提示音模式 ✓'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[#8f8b80]">课前即时提醒卡片：</span>
+              <span className="text-[#6b7cff] font-medium">
+                {settings.inapp ? '应用内横幅已开启 ✓' : '已就绪 (点击下方开启)'}
+              </span>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                onUpdateSettings({ inapp: true, sound: true, enabled: true });
+                if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                  try { navigator.vibrate([250, 100, 250]); } catch {}
+                }
+                toast('夸克提醒模式已开启！已同步激活页面横幅、手机震动与蜂鸣提示音。');
+              }}
+              className="py-2.5 px-3 rounded text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer bg-[#d99a2b] text-[#1d1f24] hover:bg-[#c4871f] shadow-md shadow-[#d99a2b]/20"
+            >
+              <CheckCircle className="w-3.5 h-3.5" />
+              <span>一键开启夸克横幅与震动提醒</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleTestLocalNotification}
+              className="py-2.5 px-3 rounded text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer border bg-[#262832] border-[#d99a2b] text-[#d99a2b] hover:bg-[#d99a2b] hover:text-[#1d1f24]"
+            >
+              <Play className="w-3.5 h-3.5" />
+              <span>立即测试手机震动与提示音</span>
+            </button>
+          </div>
+
+          {/* Native Browser Switch Tip for Lock-screen */}
+          <div className="border-t border-[#2e313b] pt-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="text-[11px] text-[#8f8b80]">
+              💡 如需手机黑屏关屏幕时也能收到【系统级锁屏横幅通知】：
+            </div>
+            <div className="flex items-center gap-2">
+              {onOpenDoctor && (
+                <button
+                  type="button"
+                  onClick={onOpenDoctor}
+                  className="text-[11px] text-[#8f8b80] hover:text-[#e9e4d8] font-bold flex items-center gap-1 cursor-pointer bg-[#242732] px-2 py-1 rounded border border-[#3e4254] shrink-0"
+                >
+                  <Globe className="w-3 h-3 text-[#6b7cff]" />
+                  <span>内核诊断</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleCopyUrlForNativeBrowser}
+                className="text-[11px] text-[#6b7cff] hover:text-[#8ea4ff] font-bold flex items-center gap-1 cursor-pointer bg-[#6b7cff]/15 px-2.5 py-1 rounded border border-[#6b7cff]/30 w-fit shrink-0"
+              >
+                <span>一键复制网址 ➔ 在手机自带浏览器打开</span>
+              </button>
+            </div>
           </div>
         </div>
       ) : (

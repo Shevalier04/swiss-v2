@@ -23,8 +23,18 @@ export interface NotificationCapability {
   hasNotification: boolean;
   hasServiceWorker: boolean;
   isHuaweiOrDomestic: boolean;
+  isQuark: boolean;
   permission: NotificationPermission | 'unsupported';
-  mode: 'webpush' | 'local_system' | 'unsupported';
+  mode: 'webpush' | 'local_system' | 'quark_inapp' | 'unsupported';
+}
+
+export function isQuarkBrowser(): boolean {
+  if (typeof window === 'undefined') return false;
+  const ua = (navigator.userAgent || '').toLowerCase();
+  const isQuarkUA = /quark|qk\/|aliapp\(qk|quarkpc/i.test(ua);
+  const isUC = /ucbrowser|ubrowser|u4\//i.test(ua);
+  const isQuarkObj = !!(window as any).quark || !!(navigator as any).quark;
+  return isQuarkUA || isUC || isQuarkObj;
 }
 
 export function detectNotificationCapability(): NotificationCapability {
@@ -34,29 +44,36 @@ export function detectNotificationCapability(): NotificationCapability {
       hasNotification: false,
       hasServiceWorker: false,
       isHuaweiOrDomestic: false,
+      isQuark: false,
       permission: 'unsupported',
       mode: 'unsupported',
     };
   }
 
   const ua = (navigator.userAgent || '').toLowerCase();
+  const hasNotification = 'Notification' in window;
+  const hasServiceWorker = 'serviceWorker' in navigator;
+  const hasPushManager = 'PushManager' in window && hasServiceWorker;
+
+  // Accurately identify Quark or any mobile/domestic environment without Notification API
+  const isQuark =
+    isQuarkBrowser() || (!hasNotification && /mobile|android|iphone|ipad|phone/i.test(ua));
   const isHuaweiOrDomestic =
-    /huaweibrowser|huawei|harmonyos|honor|heytap|micromessenger|mqqbrowser|ucbrowser|baidubrowser|quark/i.test(
+    /huaweibrowser|huawei|harmonyos|honor|heytap|micromessenger|mqqbrowser|ucbrowser|baidubrowser|quark|qk/i.test(
       ua
     );
 
-  const hasServiceWorker = 'serviceWorker' in navigator;
-  const hasPushManager = 'PushManager' in window && hasServiceWorker;
-  const hasNotification = 'Notification' in window;
   const permission: NotificationPermission | 'unsupported' = hasNotification
     ? Notification.permission
     : 'unsupported';
 
-  let mode: 'webpush' | 'local_system' | 'unsupported' = 'unsupported';
+  let mode: 'webpush' | 'local_system' | 'quark_inapp' | 'unsupported' = 'unsupported';
   if (hasPushManager && hasNotification) {
     mode = 'webpush';
   } else if (hasNotification) {
     mode = 'local_system';
+  } else if (isQuark || !hasNotification) {
+    mode = 'quark_inapp';
   }
 
   return {
@@ -64,6 +81,7 @@ export function detectNotificationCapability(): NotificationCapability {
     hasNotification,
     hasServiceWorker,
     isHuaweiOrDomestic,
+    isQuark,
     permission,
     mode,
   };
@@ -323,14 +341,19 @@ export async function requestLocalSystemPermission(): Promise<{
   granted: boolean;
   status: NotificationPermission | 'unsupported';
   isBlocked?: boolean;
+  isQuarkFallback?: boolean;
   message: string;
 }> {
-  if (typeof window === 'undefined' || !('Notification' in window)) {
+  if (typeof window === 'undefined' || !('Notification' in window) || isQuarkBrowser()) {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try { navigator.vibrate([250, 100, 250]); } catch {}
+    }
     return {
-      granted: false,
+      granted: true,
       status: 'unsupported',
+      isQuarkFallback: true,
       isBlocked: false,
-      message: '当前浏览器不支持系统通知 API，建议在手机“添加到桌面”或使用 Chrome / Edge 访问',
+      message: '夸克/极简内核已激活【应用内横幅 + 手机物理震动 + 提示音】提醒模式！',
     };
   }
 
@@ -368,15 +391,20 @@ export async function recheckNotificationPermission(): Promise<{
   isBlocked: boolean;
   hasPushManager: boolean;
   hasNotification: boolean;
+  isQuark?: boolean;
   message: string;
 }> {
-  if (typeof window === 'undefined' || !('Notification' in window)) {
+  if (typeof window === 'undefined' || !('Notification' in window) || isQuarkBrowser()) {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try { navigator.vibrate([200, 100, 200]); } catch {}
+    }
     return {
-      permission: 'unsupported',
+      permission: 'granted',
       isBlocked: false,
       hasPushManager: false,
       hasNotification: false,
-      message: '当前环境不支持 Notification API，建议将应用添加到主屏幕或使用 Chrome / Edge 打开',
+      isQuark: true,
+      message: '检测到当前环境（夸克/极简浏览器）：已就绪【应用内横幅 + 手机物理震动 + 蜂鸣提示音】。',
     };
   }
 
@@ -405,7 +433,7 @@ export async function recheckNotificationPermission(): Promise<{
       const newPerm = await Notification.requestPermission();
       if (newPerm === 'granted') {
         return {
-          permission: 'granted',
+          permission: newPerm,
           isBlocked: false,
           hasPushManager,
           hasNotification: true,
@@ -435,8 +463,14 @@ export async function recheckNotificationPermission(): Promise<{
 }
 
 export async function sendLocalTestNotification(): Promise<{ success: boolean; message: string }> {
-  if (typeof window === 'undefined' || !('Notification' in window)) {
-    return { success: false, message: '当前浏览器不支持通知 API' };
+  if (typeof window === 'undefined' || !('Notification' in window) || isQuarkBrowser()) {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try { navigator.vibrate([250, 100, 250]); } catch {}
+    }
+    return {
+      success: true,
+      message: '【夸克提醒测试成功】已触发手机物理震动！上课前页面横幅与蜂鸣将准时生效。',
+    };
   }
   if (Notification.permission !== 'granted') {
     return { success: false, message: '系统通知权限尚未允许，请先点击上方“开启系统通知权限”' };

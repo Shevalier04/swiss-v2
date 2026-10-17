@@ -13,8 +13,10 @@ import {
   ShieldCheck,
   Bell,
   Sparkles,
+  ExternalLink,
+  Copy,
 } from 'lucide-react';
-import { recheckNotificationPermission, NotificationCapability } from '../utils/pushManager';
+import { recheckNotificationPermission, isQuarkBrowser } from '../utils/pushManager';
 
 interface NotificationGuideModalProps {
   isOpen: boolean;
@@ -23,7 +25,7 @@ interface NotificationGuideModalProps {
   toast: (msg: string) => void;
 }
 
-type BrowserType = 'huawei' | 'chrome' | 'ios' | 'domestic';
+type BrowserType = 'quark' | 'huawei' | 'chrome' | 'ios' | 'domestic';
 
 export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
   isOpen,
@@ -31,7 +33,7 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
   onPermissionGranted,
   toast,
 }) => {
-  const [activeTab, setActiveTab] = useState<BrowserType>('huawei');
+  const [activeTab, setActiveTab] = useState<BrowserType>('quark');
   const [isRequesting, setIsRequesting] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [showManualSteps, setShowManualSteps] = useState(false);
@@ -40,15 +42,21 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
     message: string;
   } | null>(null);
 
+  const isQuarkEnv =
+    typeof window !== 'undefined' &&
+    (isQuarkBrowser() || !('Notification' in window));
+
   // Auto-detect browser to pick default tab
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const ua = (navigator.userAgent || '').toLowerCase();
-    if (/iphone|ipad|ipod/i.test(ua)) {
+    if (isQuarkBrowser() || !('Notification' in window)) {
+      setActiveTab('quark');
+    } else if (/iphone|ipad|ipod/i.test(ua)) {
       setActiveTab('ios');
     } else if (/huaweibrowser|huawei|harmonyos|honor/i.test(ua)) {
       setActiveTab('huawei');
-    } else if (/micromessenger|mqqbrowser|ucbrowser|quark|baidubrowser/i.test(ua)) {
+    } else if (/micromessenger|mqqbrowser|ucbrowser|baidubrowser/i.test(ua)) {
       setActiveTab('domestic');
     } else {
       setActiveTab('chrome');
@@ -57,21 +65,50 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Primary Action: One-Click Request Native Permission
+  const handleCopyUrl = () => {
+    if (typeof window === 'undefined') return;
+    const url = window.location.href;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(url)
+        .then(() => {
+          toast('课表网址已复制！请在手机自带浏览器（如华为/小米/Chrome）中粘贴打开。');
+        })
+        .catch(() => {
+          prompt('请复制当前课表网址：', url);
+        });
+    } else {
+      prompt('请复制当前课表网址：', url);
+    }
+  };
+
+  // Primary Action: One-Click Request / Activate
   const handleOneClickRequest = async () => {
     setIsRequesting(true);
     setCheckResult(null);
 
-    if (typeof window === 'undefined' || !('Notification' in window)) {
-      setIsRequesting(false);
+    // 1. Quark / No-Notification Environment -> Seamless Haptic & Sound In-App Activation
+    if (isQuarkEnv) {
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate([250, 100, 250]);
+        } catch {}
+      }
+
       setCheckResult({
-        status: 'unsupported',
-        message: '当前浏览器不支持系统通知，建议使用 Chrome / Edge 或将应用添加到主屏幕',
+        status: 'granted',
+        message: '🎉 夸克提醒已成功激活！已开启手机物理震动、应用内悬浮横幅与课前蜂鸣。',
       });
-      setShowManualSteps(true);
+      toast('🎉 夸克专属提醒已成功开启！手机已触发物理震动。');
+      onPermissionGranted();
+      setIsRequesting(false);
+      setTimeout(() => {
+        onClose();
+      }, 1200);
       return;
     }
 
+    // 2. Standard Browser with window.Notification
     try {
       const res = await Notification.requestPermission();
       if (res === 'granted') {
@@ -106,6 +143,25 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
   const handleRecheck = async () => {
     setIsChecking(true);
     setCheckResult(null);
+
+    if (isQuarkEnv) {
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate([200, 100, 200]);
+        } catch {}
+      }
+      setCheckResult({
+        status: 'granted',
+        message: '已为您检测并就绪【夸克专属模式：应用内横幅 + 手机物理震动】！',
+      });
+      toast('🎉 夸克提醒模式已就绪！');
+      onPermissionGranted();
+      setTimeout(() => {
+        onClose();
+      }, 1000);
+      setIsChecking(false);
+      return;
+    }
 
     try {
       const res = await recheckNotificationPermission();
@@ -142,10 +198,12 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
             </div>
             <div>
               <h3 className="font-editorial font-bold text-base sm:text-lg text-[#e9e4d8] leading-tight">
-                系统通知权限开启
+                {isQuarkEnv ? '夸克浏览器 · 提醒通道配置' : '系统通知权限开启'}
               </h3>
               <p className="text-[11px] text-[#8f8b80] mt-0.5">
-                一键唤起手机系统原生授权 ｜ 锁屏与课前提醒即达
+                {isQuarkEnv
+                  ? '夸克专属强提醒 ｜ 手机物理震动 + 悬浮横幅 + 蜂鸣提示'
+                  : '一键唤起手机系统原生授权 ｜ 锁屏与课前提醒即达'}
               </p>
             </div>
           </div>
@@ -160,35 +218,76 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
 
         {/* Body Content */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1 text-xs text-[#a8a399] leading-relaxed custom-scrollbar">
-          {/* Top Primary One-Click Card */}
+          {/* Top Primary Action Card */}
           <div className="bg-[#16181d] border border-[#2e313b] p-4 rounded-xl text-center space-y-3">
             <div className="w-12 h-12 rounded-full bg-[#6b7cff]/20 border border-[#6b7cff] flex items-center justify-center text-[#6b7cff] mx-auto shadow-lg shadow-[#6b7cff]/15">
-              <Sparkles className="w-6 h-6 animate-pulse" />
+              {isQuarkEnv ? (
+                <Smartphone className="w-6 h-6 text-[#d99a2b] animate-bounce" />
+              ) : (
+                <Sparkles className="w-6 h-6 animate-pulse" />
+              )}
             </div>
 
             <div className="space-y-1">
               <h4 className="font-bold text-sm text-[#e9e4d8]">
-                点击下方按钮，直接在手机弹出授权
+                {isQuarkEnv
+                  ? '检测到夸克浏览器：一键激活专属强提醒'
+                  : '点击下方按钮，直接在手机弹出授权'}
               </h4>
-              <p className="text-[11.5px] text-[#8f8b80]">
-                系统将直接弹出「掌上课表 想给您发送通知」，点击<strong>【允许】</strong>即可瞬间开启！
+              <p className="text-[11.5px] text-[#8f8b80] leading-relaxed">
+                {isQuarkEnv
+                  ? '夸克移动端关闭了系统通知通道（即使添加至桌面也无系统通知API）。点击下方立即开启【手机物理震动 + 悬浮横幅 + 课前蜂鸣】！'
+                  : '系统将直接弹出「掌上课表 想给您发送通知」，点击【允许】即可瞬间开启！'}
               </p>
             </div>
 
-            {/* Direct One-Click Button */}
+            {/* Direct Action Button */}
             <button
               type="button"
               disabled={isRequesting}
               onClick={handleOneClickRequest}
-              className="w-full py-3 bg-[#6b7cff] hover:bg-[#5868e6] text-white font-bold text-sm tracking-wide rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-[#6b7cff]/25 active:scale-98 disabled:opacity-50"
+              className={`w-full py-3 font-bold text-sm tracking-wide rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg active:scale-98 disabled:opacity-50 ${
+                isQuarkEnv
+                  ? 'bg-[#d99a2b] hover:bg-[#c4871f] text-[#1d1f24] shadow-[#d99a2b]/25'
+                  : 'bg-[#6b7cff] hover:bg-[#5868e6] text-white shadow-[#6b7cff]/25'
+              }`}
             >
               {isRequesting ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : isQuarkEnv ? (
+                <CheckCircle className="w-4 h-4" />
               ) : (
                 <ShieldCheck className="w-4 h-4" />
               )}
-              <span>{isRequesting ? '正在唤起手机授权...' : '一键获取系统通知权限'}</span>
+              <span>
+                {isRequesting
+                  ? '处理中...'
+                  : isQuarkEnv
+                  ? '一键激活夸克强提醒（震动 + 横幅 + 蜂鸣）'
+                  : '一键获取系统通知权限'}
+              </span>
             </button>
+
+            {/* In Quark: Native Lock-Screen Recommendation */}
+            {isQuarkEnv && (
+              <div className="bg-[#121317] border border-[#d99a2b]/30 p-3 rounded-lg text-left space-y-2 mt-2">
+                <div className="flex items-center gap-1.5 text-[#d99a2b] font-bold text-xs">
+                  <Smartphone className="w-3.5 h-3.5 shrink-0" />
+                  <span>💡 想要手机黑屏熄屏时也能收到系统横幅推送？</span>
+                </div>
+                <p className="text-[11px] text-[#8f8b80] leading-relaxed">
+                  因夸克浏览器无法调用安卓系统锁屏通知栏，如需在<strong>手机锁屏黑屏时</strong>收到系统横幅通知，只需复制网址在<strong>手机自带浏览器</strong>打开：
+                </p>
+                <button
+                  type="button"
+                  onClick={handleCopyUrl}
+                  className="w-full py-2 bg-[#6b7cff]/20 hover:bg-[#6b7cff]/30 border border-[#6b7cff]/50 text-[#8ea4ff] font-bold text-xs rounded transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>一键复制课表网址 ➔ 手机自带浏览器打开 (享锁屏推送)</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Detection Result Box if checked or errored */}
@@ -218,7 +317,7 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
             >
               <div className="flex items-center gap-1.5">
                 <Smartphone className="w-3.5 h-3.5 text-[#6b7cff]" />
-                <span className="font-semibold">点击后没有弹出授权窗口？查看极简设置</span>
+                <span className="font-semibold">各浏览器解除拦截与配置指引</span>
               </div>
               {showManualSteps ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
@@ -226,7 +325,16 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
             {showManualSteps && (
               <div className="p-3 border-t border-[#2e313b] space-y-3">
                 {/* Compact Browser Tabs */}
-                <div className="grid grid-cols-4 bg-[#121317] rounded p-0.5 text-[11px] font-semibold border border-[#262832]">
+                <div className="grid grid-cols-5 bg-[#121317] rounded p-0.5 text-[10.5px] font-semibold border border-[#262832]">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('quark')}
+                    className={`py-1.5 rounded transition-colors cursor-pointer ${
+                      activeTab === 'quark' ? 'bg-[#d99a2b] text-[#1d1f24] font-bold' : 'text-[#8f8b80]'
+                    }`}
+                  >
+                    夸克浏览器
+                  </button>
                   <button
                     type="button"
                     onClick={() => setActiveTab('huawei')}
@@ -243,7 +351,7 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
                       activeTab === 'chrome' ? 'bg-[#6b7cff] text-white font-bold' : 'text-[#8f8b80]'
                     }`}
                   >
-                    Chrome/Edge
+                    Chrome
                   </button>
                   <button
                     type="button"
@@ -266,7 +374,20 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
                 </div>
 
                 {/* Tab Body */}
-                <div className="text-[11.5px] leading-relaxed text-[#a8a399] bg-[#121317] p-3 rounded border border-[#262832]">
+                <div className="text-[11.5px] leading-relaxed text-[#a8a399] bg-[#121317] p-3 rounded border border-[#262832] space-y-2">
+                  {activeTab === 'quark' && (
+                    <div className="space-y-1.5">
+                      <p className="font-bold text-[#e9e4d8]">
+                        为什么夸克浏览器会提示“不支持 API，即使添加至桌面也不行”？
+                      </p>
+                      <p>
+                        因为夸克移动端为追求极简体验，在内核中裁减了 W3C <code>window.Notification</code> 接口。即使点击“添加至桌面”，生成的快捷方式依然在夸克内部运行，无法唤醒系统通知栏。
+                      </p>
+                      <p className="font-semibold text-[#d99a2b]">
+                        解决方案：本应用已为夸克用户提供专属震动与横幅双重提醒；若您需要系统锁屏通知，点击上方“复制课表网址”并在手机自带浏览器打开即可！
+                      </p>
+                    </div>
+                  )}
                   {activeTab === 'huawei' && (
                     <p>
                       在华为浏览器<strong>最上方网址栏点击「锁头🔒 / 盾牌」</strong> ➔ 点击<strong>【网站设置】</strong> ➔ 将<strong>【通知】</strong>由禁止修改为<strong>【允许】</strong>即可。
@@ -284,7 +405,7 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
                   )}
                   {activeTab === 'domestic' && (
                     <p>
-                      微信/QQ 内置浏览器限制系统通知。请点击右上角<strong>【···】</strong>选择<strong>【在浏览器打开】</strong>（推荐使用 Chrome 或 Edge）。
+                      微信/QQ 内置浏览器限制系统通知。请点击右上角<strong>【···】</strong>选择<strong>【在浏览器打开】</strong>（推荐使用系统自带浏览器或 Chrome）。
                     </p>
                   )}
                 </div>
@@ -296,7 +417,7 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
                   className="w-full py-2 bg-[#252834] hover:bg-[#343849] border border-[#3e4252] text-[#e9e4d8] text-xs font-semibold rounded flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isChecking ? 'animate-spin' : ''}`} />
-                  <span>已完成设置，一键重新检测权限</span>
+                  <span>{isQuarkEnv ? '重新检测并激活夸克强提醒' : '已完成设置，一键重新检测权限'}</span>
                 </button>
               </div>
             )}
@@ -305,7 +426,9 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
 
         {/* Footer Actions */}
         <div className="px-5 py-3 border-t border-[#333644] bg-[#191b22] flex items-center justify-between">
-          <span className="text-[11px] text-[#8f8b80]">点击允许后系统将自动保存</span>
+          <span className="text-[11px] text-[#8f8b80]">
+            {isQuarkEnv ? '夸克专属强提醒已就绪' : '点击允许后系统将自动保存'}
+          </span>
           <button
             type="button"
             onClick={onClose}

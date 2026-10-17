@@ -32,6 +32,7 @@ interface ProfileTabProps {
   onClearData: () => void;
   onSelectPdfFile: (file: File) => void;
   onUpdateUser?: (updated: User) => void;
+  onOpenDoctor?: () => void;
   toast: (msg: string) => void;
 }
 
@@ -49,6 +50,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   onClearData,
   onSelectPdfFile,
   onUpdateUser,
+  onOpenDoctor,
   toast,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -329,6 +331,26 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
               <ChevronRight className="w-4 h-4 text-[#63605a]" />
             </div>
           </div>
+
+          {onOpenDoctor && (
+            <div
+              onClick={onOpenDoctor}
+              className="flex items-center justify-between py-3.5 cursor-pointer hover:bg-white/[0.03] transition-colors"
+            >
+              <div>
+                <div className="font-semibold text-[#e9e4d8] flex items-center gap-1.5">
+                  <span>浏览器能力与环境诊断</span>
+                  <span className="text-[10px] px-1.5 py-0.2 bg-[#6b7cff]/20 text-[#8ea4ff] font-bold rounded">
+                    DOCTOR
+                  </span>
+                </div>
+                <div className="text-xs text-[#8f8b80] mt-0.5">
+                  自测麦克风收音、Web Audio 蜂鸣、系统通知与物理震动
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-[#63605a]" />
+            </div>
+          )}
         </div>
       </div>
 
