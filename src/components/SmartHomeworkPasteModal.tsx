@@ -427,10 +427,11 @@ export const SmartHomeworkPasteModal: React.FC<SmartHomeworkPasteModalProps> = (
                                 )}
                               </label>
                               <input
-                                type="date"
+                                type="text"
                                 value={item.due || ''}
                                 onChange={e => updateItemField(item.id, 'due', e.target.value)}
-                                className="w-full bg-[#16181d] border border-[#33363d] focus:border-[#6b7cff] px-1.5 py-1 rounded text-[#e9e4d8] text-xs outline-none"
+                                placeholder="如 2026-10-15 22:00"
+                                className="w-full bg-[#16181d] border border-[#33363d] focus:border-[#6b7cff] px-1.5 py-1 rounded text-[#e9e4d8] text-xs outline-none font-mono"
                               />
                             </div>
                           </div>

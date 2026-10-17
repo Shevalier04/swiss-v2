@@ -11,7 +11,7 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['icon.svg', 'pwa-192x192.png', 'pwa-512x512.png', 'apple-touch-icon.png'],
+        includeAssets: ['icon.svg', 'pwa-192x192.png', 'pwa-512x512.png', 'apple-touch-icon.png', 'sw-push.js'],
         manifest: {
           id: '/',
           name: '掌上课表 · Swiss Editorial',
@@ -65,6 +65,9 @@ export default defineConfig(() => {
               icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
             },
           ],
+        },
+        workbox: {
+          importScripts: ['/sw-push.js'],
         },
         devOptions: {
           enabled: true,

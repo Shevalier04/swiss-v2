@@ -1,122 +1,105 @@
-# Cloudflare D1 全局作业池与多用户作业同步实施方案
+# Web Push 系统级离线/锁屏推送通知架构方案
 
-## 用户确认与关键决策
+为“掌上课表”引入标准 Web Push Notifications（网络推送）技术栈，使学生在锁屏、手机休眠或应用未打开状态下，也能通过系统级通知栏准时接收课前提醒、作业截止预警及晚间早课预告。
+
+### User Review & Critical Decisions
 
 > [!IMPORTANT]
-> 基于第一阶段沟通确认，本次实施采用以下核心方案：
-> 1. **作业池架构**：在 Cloudflare D1 数据库中建立全局共享官方作业池（`homework_pool`），所有学生均可直接同步和自由勾选；
-> 2. **去除示范作业**：彻底移除系统所有硬编码示范作业（如 Web编程技术、数据库等测试作业），作业池无数据时显示干净空白态；
-> 3. **管理与下发方式**：控制台界面支持一键全员下发与同步至 D1，同时提供 Cloudflare D1 控制台的纯 SQL 脚本供直接执行。
+> 基于前期澄清沟通，本项目将采用全自动化服务端 VAPID 密钥管理与离线后台推送调度，并于“提醒”标签页呈现清晰直观的推送订阅卡片与全链路即时测试工具。
+
+- **推送凭证管理方式（已确认）**：服务端自动生成与持久化 VAPID 公私钥对（首次启动如无则自动生成存储至 `data/vapid_keys.json`），前端无需手动配置任何外部凭证，开箱即用。
+- **推送触发场景（已确认）**：
+  1. 课程开课前调度提醒（默认按用户设置的课前提前时间，如 15/20/30 分钟）
+  2. 作业截止倒计时预警（临近 24 小时 / 3 小时截止未完成作业）
+  3. 即时手动“测试推送”按钮，供用户实时验证锁屏推送链路
+- **UI 呈现位置（已确认）**：在“上课提醒（Reminders）”标签页内设计专属的「锁屏与系统级 Web Push」控制卡片，清晰指示订阅状态、设备注册状态及测试发送按钮。
 
 ---
 
-## 1. 方案概述与目标
+### 1. Overview & Core Concept
 
-在原有单用户隔离存储（`assignments` 表通过 `username` 区分）的基础上，打通“全局官方作业池”与“全员学生作业下发”双向通道：
-- **全局官方作业池（`homework_pool`）**：存放班级/全员标准的官方作业清单，所有学生账号在“官方作业清单同步”弹窗中看到的作业均实时来自此表；
-- **全员作业同步与下发**：管理员可在界面控制台将学号 `2612114501` 现有的作业一键升格为官方作业池，并可一键推送到 D1 中所有学生的个人作业表；
-- **纯净数据**：移除代码库中所有伪造或演示用途的作业项（`SAMPLE_ASSIGNMENTS`），保证真实、干净。
-
----
-
-## 2. 界面与交互设计 (UX & Visual Standards)
-
-### A. 官方作业清单导入界面（`HomeworkImportModal`）
-- **数据来源**：100% 绑定来自 Cloudflare D1 的 `/api/homework/console-pool` 接口；
-- **纯净空白态**：若作业池无数据，展示优雅的无干扰空白提示：“官方作业池暂无作业条目”，并提供刷新按钮，绝不回退到硬编码测试作业；
-- **实时同步**：提供“从 D1 刷新作业池”按钮，学生一键拉取最新班级作业。
-
-### B. 管理员控制台与下发界面（`AdminTerminalModal`）
-- **快速同步学号数据**：新增“将当前账号(2612114501)作业同步至官方池”按钮；
-- **全员作业广播**：支持“一键推送到所有学生”，自动遍历 D1 中的所有学生账号并在其个人作业库中生成对应作业；
-- **清晰反馈**：操作完成后以文本清晰提示处理人数与受影响的作业记录数。
+- **What It Does**: 传统浏览器端定时器（`setInterval`）在手机熄屏或切出后台数分钟后会被移动端操作系统（iOS WebKit / Android Chromium）主动挂起休眠，导致课前通知漏报。本架构采用 W3C Push API 与 Push Service 机制，由 Node.js 服务端定时比对课表与作业，借助浏览器推送服务器向设备发送标准 Web Push 数据包；Service Worker 在锁屏唤醒并直接唤起操作系统原生通知栏。
+- **Target Audience / Persona**: 习惯熄屏装在口袋或书包中的大学生用户，不需要时刻开着网页，即可在教室门口或寝室准时收到下节课的教室、座次与作业提醒。
+- **Key Value**: 真正实现无感、可靠的系统级推送交付，从“前台轮询”转变为“云端协同原生体验”。
 
 ---
 
-## 3. 技术架构与数据策略
+### 2. User Experience & Visual Design
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│                     Cloudflare D1 数据库                       │
-│                                                               │
-│   ┌──────────────────────────┐    ┌──────────────────────┐    │
-│   │ homework_pool (官方作业池) │    │ assignments (个人表)  │    │
-│   │ ──────────────────────── │    │ ──────────────────── │    │
-│   │ id (自增主键)             │    │ id, username         │    │
-│   │ course, title, due       │    │ course_name, title   │    │
-│   │ creator, created_at      │    │ deadline, completed  │    │
-│   └─────────────┬────────────┘    └──────────▲───────────┘    │
-│                 │                            │                │
-└─────────────────┼────────────────────────────┼────────────────┘
-                  │ 一键广播下发                │ 学生自由勾选导入
-                  ▼                            │
-┌──────────────────────────────────────────────┴────────────────┐
-│             Cloudflare Pages Functions API 端点                │
-│                                                               │
-│  • GET/POST/DELETE /api/homework/console-pool (池管理)         │
-│  • POST /api/homework/console-pool/push (全员广播下发)          │
-│  • GET/POST/PUT/DELETE /api/assignments (个人作业 CRUD)       │
-└───────────────────────────────────────────────────────────────┘
-```
+- **Key User Flows**:
+  1. **开启授权流程**：用户进入“提醒”标签页，点击「开启锁屏系统推送」，浏览器弹出原生系统级通知权限请求。
+  2. **端到端自动注册**：授权成功后，前端从服务端拉取公钥，调用 `registration.pushManager.subscribe` 获取 `PushSubscription` 凭证，静默上报并绑定至当前账号。
+  3. **实时测试验证**：卡片上提供「发送锁屏测试通知」按钮，点击后即使立即熄屏或最小化应用，5 秒内手机通知栏即可收到震动与推送卡片，点击通知卡片可直接精准深链接直达课表对应位置。
+  4. **自主关闭或设备解绑**：支持一键关闭系统级推送或更换设备，服务端自动注销无效订阅。
 
-### 数据库 Schema 与 D1 SQL 操作脚本
-
-#### 1. 新建 `homework_pool` 表结构（写入 `schema.sql`）
-```sql
-CREATE TABLE IF NOT EXISTS homework_pool (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  course TEXT NOT NULL,
-  title TEXT NOT NULL,
-  due TEXT,
-  creator TEXT DEFAULT '管理员',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX IF NOT EXISTS idx_hw_pool_course ON homework_pool(course);
-```
-
-#### 2. 将学号 `2612114501` 现有作业转为官方作业池（SQL 可直接在 D1 执行）
-```sql
--- 将 2612114501 的现有作业去重复制进官方作业池
-INSERT INTO homework_pool (course, title, due, creator)
-SELECT course_name, title, deadline, '2612114501'
-FROM assignments
-WHERE username = '2612114501'
-  AND title NOT IN (SELECT title FROM homework_pool);
-```
-
-#### 3. 将官方作业池推送到 D1 中所有学生的个人作业列表（SQL 可直接在 D1 执行）
-```sql
--- 为 assignments 中出现过的所有不同学生账号插入官方作业池的作业（避免重复插入相同标题）
-INSERT INTO assignments (username, course_name, title, deadline, completed)
-SELECT u.username, p.course, p.title, p.due, 0
-FROM (SELECT DISTINCT username FROM assignments) u
-CROSS JOIN homework_pool p
-WHERE NOT EXISTS (
-  SELECT 1 FROM assignments a 
-  WHERE a.username = u.username 
-    AND a.course_name = p.course 
-    AND a.title = p.title
-);
-```
+- **Visual Identity & Theme**:
+  - *Design Posture*: 沿用 Swiss Editorial 瑞士排版高格调深色模式（深墨色 `#1d1f24`、暖米色 `#e9e4d8`、克莱因蓝 `#6b7cff` 与薄荷绿 `#4ade80`）。
+  - *Card Geometry*: 遵循移动端人体工学原则，设计圆角卡片、清晰的分隔线与宽触控区域（$\ge 44\text{px}$ 交互热区）。
+  - *Zero-Pill Discipline*: 状态与设备信息采用无边框自然文本与微标点排版，坚决避免粗劣的多层药丸胶囊堆叠。
 
 ---
 
-## 4. 实施计划与步骤
+### 3. Key Product Decisions & Trade-Offs
 
-1. **更新数据库 Schema (`schema.sql`)**：
-   - 新增 `homework_pool` 官方作业池表定义与索引；
-   - 补充 D1 Console 手动操作的 SQL 示例注释。
-2. **实现 Cloudflare Pages Functions 接口 (`functions/api/homework/console-pool.ts`)**：
-   - 适配 D1 数据库绑定；
-   - 实现查询作业池、添加作业项、删除作业项、清空作业池接口；
-   - 实现 `push` 接口：支持将作业池或单项作业下发给 D1 中全员学生。
-3. **彻底清除示范测试数据**：
-   - 清理 `src/services/api.ts` 中 `getConsoleHomeworkTemplates` 的 3 项硬编码测试作业；
-   - 清理 `src/components/HomeworkImportModal.tsx` 中在请求失败或空列表时注入 `SAMPLE_ASSIGNMENTS` 的逻辑；
-   - 清理或将 `SAMPLE_ASSIGNMENTS` 替换为空数组。
-4. **增强控制台交互 (`src/components/AdminTerminalModal.tsx`)**：
-   - 增加快速从当前学号作业生成官方作业池的按钮与指令；
-   - 接入 D1 下发接口并提供直观反馈。
-5. **本地验证与打包导出**：
-   - 编译检查 (`npm run build`)；
-   - 更新 `course-schedule-github.zip`，确保部署到 Cloudflare Pages 时最新 Functions 与前端同步生效。
+- **Decision 1: 自定义 Service Worker vs vite-plugin-pwa 插件配置**
+  - *Chosen Approach*: 采用 `vite-plugin-pwa` 协同配置，并将包含 `push` 与 `notificationclick` 事件的核心脚本配置在 Service Worker 注入逻辑中（或提供标准 `public/sw.js` 注入策略），确保在开发模式与生产模式打包后均能稳健注册。
+  - *Why*: 保证现有 PWA 离线缓存、更新逻辑不受破坏，同时赋予接收云端推送与点击深链接能力。
+  - *Alternatives Considered*: 完全手写独立 Service Worker 会导致丢失 Vite 资源自动哈希预缓存机制。
+
+- **Decision 2: VAPID 密钥持久化与安全性**
+  - *Chosen Approach*: 服务端在 `data/vapid_keys.json` 中自动生成并持久化公私钥，公开端点 `/api/push/vapid-public-key` 仅暴露公钥。
+  - *Why*: 彻底消除部署前繁琐的人工命令配置门槛，即便容器重启也保持密钥一致性。
+
+- **Decision 3: 服务端后台巡检与推送调度调度器**
+  - *Chosen Approach*: 在 Express 服务端集成轻量级分钟级轮询守护定时器，结合各用户的实时课表和作业数据，向已注册且开启提醒的订阅端点派发推文；同时提供即时单发测试接口。
+  - *Why*: 纯服务端驱动能够抵御客户端休眠断连，保证准时到达。
+
+---
+
+### 4. Technical Architecture & Data Strategy
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                      Client (Browser / PWA)                  │
+│                                                              │
+│  ┌───────────────────────┐       ┌────────────────────────┐  │
+│  │   ReminderTab UI      │       │      Service Worker    │  │
+│  │  - Web Push Switch    │       │     (push / click)     │  │
+│  │  - Test Push Button   │       └───────────▲────────────┘  │
+│  └───────────┬───────────┘                   │               │
+│              │ Subscribe / Token             │               │
+└──────────────┼───────────────────────────────┼───────────────┘
+               │                               │ Native Push
+               ▼                               │ Delivery
+┌──────────────────────────────────────────────┼───────────────┐
+│              Server (Node.js / Express)      │               │
+│                                              │               │
+│  ┌─────────────────────────┐                 │               │
+│  │  Web Push API Router    │                 │               │
+│  │  - GET /vapid-public-key│                 │               │
+│  │  - POST /subscribe      │                 │               │
+│  │  - POST /test-push      │                 │               │
+│  └───────────┬─────────────┘                 │               │
+│              │                               │               │
+│              ▼                               │               │
+│  ┌─────────────────────────┐                 │               │
+│  │  Push Notification      │                 │               │
+│  │  Dispatcher & Scheduler ├─────────────────┘               │
+│  │  - Class Start Checker  │  (via web-push & Browser FCM /  │
+│  │  - Homework Due Checker │   Apple Web Push Gateways)      │
+│  └───────────┬─────────────┘                                 │
+│              │                                               │
+│              ▼                                               │
+│  ┌─────────────────────────┐                                 │
+│  │ Local JSON Database     │                                 │
+│  │ - timetable_db.json     │                                 │
+│  │ - vapid_keys.json       │                                 │
+│  └─────────────────────────┘                                 │
+└──────────────────────────────────────────────────────────────┘
+```
+
+- **Interactive Component & State Mapping**:
+  - `ReminderTab.tsx`: 增加 Web Push 状态监控（已订阅 / 待授权 / 不支持）、一键订阅按钮、测试推送触发器与详细状态解说。
+  - `src/utils/pushManager.ts`: 封装 Service Worker 注册检测、URL-Base64 公钥格式转换、`pushManager.subscribe` 与后端同步逻辑。
+  - `server/pushService.ts`: 封装 `web-push` 库交互、VAPID 自动生成与存盘、多设备订阅存储、单播及广播发送、失效订阅（410 Gone / 404）自动清理逻辑。
+  - `server/api.ts`: 挂载 `/api/push/*` 路由群组，包含公钥分发、订阅注册/注销、手动测试触发与定时检查触发。

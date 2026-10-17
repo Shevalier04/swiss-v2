@@ -901,7 +901,24 @@
       }
     ]
   },
-  "homework": {},
+  "homework": {
+    "admin": [
+      {
+        "id": 1,
+        "course": "Web编程技术",
+        "title": "完成前端响应式界面制作",
+        "due": "2026-10-15 20:00",
+        "done": false
+      },
+      {
+        "id": 2,
+        "course": "数据库概论",
+        "title": "ER 图设计报告",
+        "due": "2026-10-12 18:00",
+        "done": false
+      }
+    ]
+  },
   "tasks": {},
   "notices": [
     {
@@ -911,5 +928,22 @@
       "time": 1791605962691
     }
   ],
-  "consoleHomework": []
+  "consoleHomework": [
+    {
+      "id": 1,
+      "course": "Web编程技术",
+      "title": "完成前端响应式界面制作",
+      "due": "2026-10-15 20:00",
+      "creator": "admin",
+      "createdAt": 1792159608476
+    },
+    {
+      "id": 2,
+      "course": "数据库概论",
+      "title": "ER 图设计报告",
+      "due": "2026-10-12 18:00",
+      "creator": "admin",
+      "createdAt": 1792159608476
+    }
+  ]
 }

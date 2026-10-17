@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { app as apiApp } from './server/app';
+import { pushService } from './server/pushService';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,6 +14,9 @@ async function startServer() {
 
   // Mount API routes
   app.use(apiApp);
+
+  // Start background push notification scheduler for upcoming classes and homework
+  pushService.startScheduler();
 
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.join(__dirname, 'dist')));

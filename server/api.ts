@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { GoogleGenAI } from '@google/genai';
 import { dbStore } from './store';
 import { getDefaultTemplateCourses, PALETTE } from './data';
+import { pushService } from './pushService';
 
 export const apiRouter = express.Router();
 apiRouter.use(express.json({ limit: '25mb' }));
@@ -809,6 +810,24 @@ apiRouter.post('/admin/users/:targetUser/reset-password', (req: Request, res: Re
   return res.json({ success: true });
 });
 
+apiRouter.post('/admin/users/:targetUser/rename', (req: Request, res: Response) => {
+  const username = getCurrentUser(req);
+  const user = username ? dbStore.getUser(username) : null;
+  if (!user || user.role !== 'admin') return res.status(403).json({ error: '无权操作' });
+
+  const target = req.params.targetUser;
+  const { name } = req.body;
+  if (!name || !String(name).trim()) return res.status(400).json({ error: '姓名不能为空' });
+
+  try {
+    const trimmed = String(name).trim();
+    dbStore.updateUserName(target, trimmed);
+    return res.json({ success: true, name: trimmed });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
 apiRouter.delete('/admin/users/:targetUser', (req: Request, res: Response) => {
   const username = getCurrentUser(req);
   const user = username ? dbStore.getUser(username) : null;
@@ -846,6 +865,7 @@ apiRouter.post('/admin/terminal', (req: Request, res: Response) => {
           text: `可用命令：
   users                          列出所有用户
   user <名称>                    查看用户详情
+  user <名称> rename <新真实姓名> 修改学生真实姓名(终端管理员专享)
   user <名称> disable            禁用账号（禁止登录）
   user <名称> enable             启用账号
   user <名称> reset <新密码>      重置密码
@@ -903,6 +923,11 @@ apiRouter.post('/admin/terminal', (req: Request, res: Response) => {
           if (!np || np.length < 4) throw new Error('用法：user <名称> reset <新密码(≥4位)>');
           dbStore.resetUserPassword(target, np);
           lines.push({ text: `已重置 ${target} 的密码`, type: 'info' });
+        } else if (sub === 'rename') {
+          const newName = p[3];
+          if (!newName || !newName.trim()) throw new Error('用法：user <名称> rename <新真实姓名>');
+          dbStore.updateUserName(target, newName.trim());
+          lines.push({ text: `[控制台] 已将账号 ${target} 姓名变更为：${newName.trim()}`, type: 'info' });
         } else if (sub === 'delete') {
           dbStore.deleteUser(target);
           lines.push({ text: `已删除账号及所有数据：${target}`, type: 'err' });
@@ -1183,4 +1208,98 @@ apiRouter.post('/ai/transcribe', async (req: Request, res: Response) => {
     });
   }
 });
+
+// ==========================================
+// Web Push Notifications API Endpoints
+// ==========================================
+
+// 1. Get VAPID public key
+apiRouter.get('/push/vapid-public-key', (_req: Request, res: Response) => {
+  try {
+    const publicKey = pushService.getPublicKey();
+    return res.json({ success: true, publicKey });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || '获取 VAPID 公钥失败' });
+  }
+});
+
+// 2. Subscribe to Web Push
+apiRouter.post('/push/subscribe', (req: Request, res: Response) => {
+  try {
+    const username = getCurrentUser(req) || 'admin';
+    const { subscription, userAgent } = req.body || {};
+    if (!subscription || !subscription.endpoint || !subscription.keys) {
+      return res.status(400).json({ error: '无效的推送订阅数据 (subscription)' });
+    }
+
+    const entry = dbStore.savePushSubscription(username, subscription, userAgent);
+    const count = dbStore.getPushSubscriptions(username).length;
+
+    return res.json({
+      success: true,
+      message: '推送订阅成功',
+      subscriptionId: entry.id,
+      activeDeviceCount: count,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || '保存推送订阅失败' });
+  }
+});
+
+// 3. Unsubscribe from Web Push
+apiRouter.post('/push/unsubscribe', (req: Request, res: Response) => {
+  try {
+    const username = getCurrentUser(req) || 'admin';
+    const { endpoint } = req.body || {};
+    if (!endpoint) {
+      return res.status(400).json({ error: '请提供 endpoint' });
+    }
+
+    const removed = dbStore.removePushSubscription(username, endpoint);
+    return res.json({
+      success: true,
+      removed,
+      message: removed ? '已注销该设备推送' : '未找到匹配的订阅记录',
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || '注销推送订阅失败' });
+  }
+});
+
+// 4. Get push status for current user
+apiRouter.get('/push/status', (req: Request, res: Response) => {
+  try {
+    const username = getCurrentUser(req) || 'admin';
+    const subs = dbStore.getPushSubscriptions(username);
+    return res.json({
+      success: true,
+      supported: true,
+      hasSubscriptions: subs.length > 0,
+      subscriptionCount: subs.length,
+      subscriptions: subs.map(s => ({
+        id: s.id,
+        createdAt: s.createdAt,
+        lastUsedAt: s.lastUsedAt,
+        userAgent: s.userAgent,
+      })),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || '获取推送状态失败' });
+  }
+});
+
+// 5. Send test push notification
+apiRouter.post('/push/test', async (req: Request, res: Response) => {
+  try {
+    const username = getCurrentUser(req) || 'admin';
+    const result = await pushService.sendTestPush(username);
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: err.message || '测试推送发送失败',
+    });
+  }
+});
+
 

@@ -87,12 +87,9 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
   const [editSeconds, setEditSeconds] = useState<string>('00');
   const minInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-expand drawer when a new task is associated for focus
+  // Keep drawer compact without forced expansion
   const prevTaskRef = useRef<string | undefined>(currentTaskTitle);
   useEffect(() => {
-    if (currentTaskTitle && currentTaskTitle !== prevTaskRef.current) {
-      setIsExpanded(true);
-    }
     prevTaskRef.current = currentTaskTitle;
   }, [currentTaskTitle]);
 
@@ -262,9 +259,22 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
     <div className="border-2 border-[#e9e4d8] bg-[#1e2025] shadow-lg overflow-hidden transition-all duration-300 rounded-sm">
       {/* 
         =======================================================================
-        1. COMPACT COLLAPSED SUMMARY BAR (醒目且不喧宾夺主的番茄钟抽屉头部)
+        1. COMPACT COLLAPSED SUMMARY BAR (醒目且不喧宾夺主的番茄钟下拉抽屉头部)
         =======================================================================
       */}
+      {/* Drawer Handle Strip */}
+      <div
+        onClick={handleToggleExpand}
+        className="bg-[#16181d] py-1 flex items-center justify-center cursor-pointer border-b border-[#2b2e38] group/handle hover:bg-[#20222a] transition-colors select-none"
+        title={isExpanded ? '收起番茄钟抽屉' : '下拉展开番茄钟完整设置抽屉'}
+      >
+        <div className="flex items-center gap-2 text-[10px] font-mono text-[#8f8b80] group-hover/handle:text-[#e9e4d8]">
+          <span className="w-5 h-0.5 bg-[#474b58] rounded-full group-hover/handle:bg-[#ff6b57] transition-colors" />
+          <span>{isExpanded ? '▲ 点击收起番茄钟抽屉' : '▼ 下拉抽屉展开番茄钟 (专注模式设置)'}</span>
+          <span className="w-5 h-0.5 bg-[#474b58] rounded-full group-hover/handle:bg-[#ff6b57] transition-colors" />
+        </div>
+      </div>
+
       <div
         onClick={handleToggleExpand}
         className="flex items-center justify-between px-3.5 py-2.5 bg-gradient-to-r from-[#20232b] via-[#242730] to-[#20232b] hover:from-[#262a34] hover:to-[#262a34] cursor-pointer transition-all select-none group relative"

@@ -11,6 +11,24 @@ import {
   getDefaultTemplateCourses
 } from './data';
 
+export interface PushSubscriptionData {
+  endpoint: string;
+  expirationTime?: number | null;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+}
+
+export interface StoredPushSubscription {
+  id: string;
+  username: string;
+  subscription: PushSubscriptionData;
+  userAgent?: string;
+  createdAt: number;
+  lastUsedAt?: number;
+}
+
 interface DatabaseSchema {
   users: Record<string, UserAccount>;
   courses: Record<string, Course[]>;
@@ -18,6 +36,7 @@ interface DatabaseSchema {
   tasks: Record<string, TaskItem[]>;
   notices: Notice[];
   consoleHomework?: { id: number; course: string; title: string; due?: string; creator?: string; createdAt?: number }[];
+  pushSubscriptions?: Record<string, StoredPushSubscription[]>;
 }
 
 const DB_FILE = path.resolve('data/timetable_db.json');
@@ -60,8 +79,8 @@ class Store {
     };
     const initialHomework: Record<string, Homework[]> = {
       admin: [
-        { id: 1, course: 'Web编程技术', title: '完成前端响应式界面制作', due: '2026-10-15', done: false },
-        { id: 2, course: '数据库概论', title: 'ER 图设计报告', due: '2026-10-12', done: false }
+        { id: 1, course: 'Web编程技术', title: '完成前端响应式界面制作', due: '2026-10-15 20:00', done: false },
+        { id: 2, course: '数据库概论', title: 'ER 图设计报告', due: '2026-10-12 18:00', done: false }
       ]
     };
     const initialTasks: Record<string, TaskItem[]> = {
@@ -81,9 +100,7 @@ class Store {
         disabled: false
       };
       initialCourses[id] = getDefaultTemplateCourses();
-      initialHomework[id] = [
-        { id: 101, course: 'Web编程技术', title: '完成第4章在线实验报告', due: '2026-10-14', done: false }
-      ];
+      initialHomework[id] = [];
       initialTasks[id] = [
         { id: 201, title: '准备下周工程训练预习报告', done: false }
       ];
@@ -175,6 +192,12 @@ class Store {
     this.persist();
   }
 
+  updateUserName(username: string, newName: string) {
+    if (!this.db.users[username]) throw new Error('用户不存在');
+    this.db.users[username].name = newName.trim();
+    this.persist();
+  }
+
   deleteUser(username: string) {
     if (username === 'admin') throw new Error('不能删除超级管理员');
     if (!this.db.users[username]) throw new Error('用户不存在');
@@ -227,6 +250,17 @@ class Store {
 
   // Homework
   getHomework(username: string): Homework[] {
+    if (!this.db.homework[username]) {
+      if (username === 'admin') {
+        this.db.homework[username] = [
+          { id: 1, course: 'Web编程技术', title: '完成前端响应式界面制作', due: '2026-10-15 20:00', done: false },
+          { id: 2, course: '数据库概论', title: 'ER 图设计报告', due: '2026-10-12 18:00', done: false }
+        ];
+        this.persist();
+      } else {
+        this.db.homework[username] = [];
+      }
+    }
     return this.db.homework[username] || [];
   }
 
@@ -426,6 +460,77 @@ class Store {
       taskCount,
       noticeCount: this.db.notices.length
     };
+  }
+
+  // Push Subscriptions
+  getPushSubscriptions(username: string): StoredPushSubscription[] {
+    if (!this.db.pushSubscriptions) this.db.pushSubscriptions = {};
+    return this.db.pushSubscriptions[username] || [];
+  }
+
+  getAllPushSubscriptions(): StoredPushSubscription[] {
+    if (!this.db.pushSubscriptions) this.db.pushSubscriptions = {};
+    const all: StoredPushSubscription[] = [];
+    for (const u of Object.keys(this.db.pushSubscriptions)) {
+      all.push(...(this.db.pushSubscriptions[u] || []));
+    }
+    return all;
+  }
+
+  savePushSubscription(username: string, subscription: PushSubscriptionData, userAgent?: string): StoredPushSubscription {
+    if (!this.db.pushSubscriptions) this.db.pushSubscriptions = {};
+    const list = this.db.pushSubscriptions[username] || [];
+    const now = Date.now();
+    const existingIndex = list.findIndex(s => s.subscription.endpoint === subscription.endpoint);
+    let entry: StoredPushSubscription;
+
+    if (existingIndex >= 0) {
+      entry = {
+        ...list[existingIndex],
+        subscription,
+        userAgent: userAgent || list[existingIndex].userAgent,
+        lastUsedAt: now,
+      };
+      list[existingIndex] = entry;
+    } else {
+      entry = {
+        id: `sub_${now}_${Math.random().toString(36).substring(2, 8)}`,
+        username,
+        subscription,
+        userAgent,
+        createdAt: now,
+        lastUsedAt: now,
+      };
+      list.push(entry);
+    }
+
+    this.db.pushSubscriptions[username] = list;
+    this.persist();
+    return entry;
+  }
+
+  removePushSubscription(username: string, endpoint: string): boolean {
+    if (!this.db.pushSubscriptions || !this.db.pushSubscriptions[username]) return false;
+    const initialLen = this.db.pushSubscriptions[username].length;
+    this.db.pushSubscriptions[username] = this.db.pushSubscriptions[username].filter(
+      s => s.subscription.endpoint !== endpoint
+    );
+    const removed = this.db.pushSubscriptions[username].length < initialLen;
+    if (removed) this.persist();
+    return removed;
+  }
+
+  cleanInvalidPushSubscription(endpoint: string) {
+    if (!this.db.pushSubscriptions) return;
+    let changed = false;
+    for (const u of Object.keys(this.db.pushSubscriptions)) {
+      const filtered = this.db.pushSubscriptions[u].filter(s => s.subscription.endpoint !== endpoint);
+      if (filtered.length !== this.db.pushSubscriptions[u].length) {
+        this.db.pushSubscriptions[u] = filtered;
+        changed = true;
+      }
+    }
+    if (changed) this.persist();
   }
 }
 

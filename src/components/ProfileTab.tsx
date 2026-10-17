@@ -98,13 +98,13 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
           {user.name.slice(0, 2).toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
-          {isEditingName ? (
+          {isEditingName && user.role === 'admin' ? (
             <div className="flex items-center gap-1.5 py-0.5">
               <input
                 type="text"
                 value={editingName}
                 onChange={e => setEditingName(e.target.value)}
-                placeholder="输入真实姓名"
+                placeholder="输入管理员名称"
                 className="bg-[#181a1f] border border-[#6b7cff] text-sm text-[#e9e4d8] font-bold px-2 py-1 rounded outline-none w-36"
                 autoFocus
                 onKeyDown={e => {
@@ -131,18 +131,24 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <div className="font-editorial text-xl font-extrabold truncate">{user.name}</div>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingName(user.name);
-                  setIsEditingName(true);
-                }}
-                className="p-1 text-[#8f8b80] hover:text-[#6b7cff] hover:bg-[#6b7cff]/10 rounded transition-colors cursor-pointer"
-                title="修改/设置姓名"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-              </button>
+              <div className="font-editorial text-xl font-extrabold truncate text-[#e9e4d8]">{user.name}</div>
+              {user.role === 'admin' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingName(user.name);
+                    setIsEditingName(true);
+                  }}
+                  className="p-1 text-[#8f8b80] hover:text-[#6b7cff] hover:bg-[#6b7cff]/10 rounded transition-colors cursor-pointer"
+                  title="管理员修改名称"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <span className="text-[10px] text-[#4ade80] bg-[#4ade80]/10 border border-[#4ade80]/30 px-1.5 py-0.2 rounded font-mono">
+                  已核验 · 终端管理员专管
+                </span>
+              )}
             </div>
           )}
           <div className="text-xs text-[#8f8b80] mt-0.5 truncate font-mono">

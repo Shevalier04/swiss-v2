@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
-import { X, RefreshCw, Terminal as TerminalIcon, Trash2, BookOpen, Plus, Send, Download, Radio } from 'lucide-react';
+import { X, RefreshCw, Terminal as TerminalIcon, Trash2, BookOpen, Plus, Send, Download, Radio, Edit3, Check } from 'lucide-react';
 
 interface AdminTerminalModalProps {
   onClose: () => void;
@@ -34,6 +34,10 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
   const [quickHwCourse, setQuickHwCourse] = useState('Web编程技术');
   const [quickHwTitle, setQuickHwTitle] = useState('');
   const [quickHwDue, setQuickHwDue] = useState('');
+
+  // Admin student name management
+  const [editingUname, setEditingUname] = useState<string | null>(null);
+  const [editingNameVal, setEditingNameVal] = useState<string>('');
 
   const termEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -236,6 +240,32 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
       onRefreshParent();
     } catch (err: any) {
       toast('全员广播失败: ' + (err.message || '未知错误'));
+    }
+  };
+
+  const handleStartRename = (u: any) => {
+    setEditingUname(u.username);
+    setEditingNameVal(u.name || '');
+  };
+
+  const handleSaveRename = async (uname: string) => {
+    const trimmed = editingNameVal.trim();
+    if (!trimmed) {
+      toast('真实姓名不能为空');
+      return;
+    }
+    try {
+      await api.updateStudentName(uname, trimmed);
+      toast(`已更新账号 [${uname}] 真实姓名为：${trimmed}`);
+      setOutput(prev => [
+        ...prev,
+        { text: `[控制台] 已将账号 ${uname} 真实姓名更正为：${trimmed}`, type: 'info' },
+      ]);
+      setUserList(prev => prev.map(u => u.username === uname ? { ...u, name: trimmed } : u));
+      setEditingUname(null);
+      onRefreshParent();
+    } catch (err: any) {
+      toast(err.message || '更新姓名失败');
     }
   };
 
@@ -493,8 +523,43 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
                 className="bg-[#202227] border border-[#2a2d34] p-2.5 rounded flex items-center justify-between gap-2 flex-wrap"
               >
                 <div className="flex items-center gap-2 min-w-[130px]">
-                  <span className="font-bold text-[#e9e4d8]">{u.name}</span>
-                  <span className="text-[10px] text-[#8f8b80] font-mono">{u.username}</span>
+                  {editingUname === u.username ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={editingNameVal}
+                        onChange={e => setEditingNameVal(e.target.value)}
+                        placeholder="输入姓名"
+                        className="bg-[#12141a] border border-[#6b7cff] text-xs text-[#e9e4d8] font-bold px-1.5 py-0.5 rounded outline-none w-24"
+                        autoFocus
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleSaveRename(u.username);
+                          if (e.key === 'Escape') setEditingUname(null);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveRename(u.username)}
+                        className="p-1 bg-[#6b7cff] text-white rounded hover:bg-[#5868e6] cursor-pointer"
+                        title="保存姓名"
+                      >
+                        <Check className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingUname(null)}
+                        className="p-1 bg-[#33363f] text-[#8f8b80] hover:text-[#e9e4d8] rounded cursor-pointer"
+                        title="取消"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="font-bold text-[#e9e4d8]">{u.name}</span>
+                      <span className="text-[10px] text-[#8f8b80] font-mono">{u.username}</span>
+                    </>
+                  )}
                   {u.role === 'admin' && (
                     <span className="text-[9px] px-1 bg-[#6b7cff] text-white font-bold rounded">
                       ADMIN
@@ -514,6 +579,14 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
                 <div className="flex gap-1.5 ml-auto">
                   {u.role !== 'admin' && (
                     <>
+                      <button
+                        onClick={() => handleStartRename(u)}
+                        className="px-2 py-0.5 text-[10px] font-bold border border-[#6b7cff]/50 text-[#8ea4ff] hover:bg-[#6b7cff] hover:text-white rounded cursor-pointer flex items-center gap-0.5"
+                        title="修改此学生真实姓名(终端管理员专享权限)"
+                      >
+                        <Edit3 className="w-2.5 h-2.5" />
+                        <span>改名</span>
+                      </button>
                       <button
                         onClick={() => handleToggleDisabled(u.username)}
                         className="px-2 py-0.5 text-[10px] font-bold border border-[#33363d] hover:bg-[#33363d] text-[#e9e4d8] rounded cursor-pointer"
@@ -569,11 +642,41 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
                 className="flex-1 min-w-[140px] bg-[#12141a] border border-[#33363f] text-[#e9e4d8] text-xs px-2 py-1 rounded outline-none"
               />
               <input
-                type="date"
+                type="datetime-local"
                 value={quickHwDue}
                 onChange={e => setQuickHwDue(e.target.value)}
+                title="截止时间 (精确到小时)"
                 className="bg-[#12141a] border border-[#33363f] text-[#e9e4d8] text-xs px-2 py-1 rounded outline-none"
               />
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const now = new Date();
+                    now.setHours(22, 0, 0, 0);
+                    const iso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                    setQuickHwDue(iso);
+                  }}
+                  className="px-1.5 py-0.5 bg-[#171920] hover:bg-[#6b7cff]/20 text-[#8ea4ff] border border-[#33363f] rounded text-[10px] cursor-pointer"
+                  title="设为今晚 22:00 截止"
+                >
+                  今晚22:00
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const now = new Date();
+                    now.setDate(now.getDate() + 1);
+                    now.setHours(22, 0, 0, 0);
+                    const iso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                    setQuickHwDue(iso);
+                  }}
+                  className="px-1.5 py-0.5 bg-[#171920] hover:bg-[#6b7cff]/20 text-[#8ea4ff] border border-[#33363f] rounded text-[10px] cursor-pointer"
+                  title="设为明晚 22:00 截止"
+                >
+                  明晚22:00
+                </button>
+              </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   type="button"

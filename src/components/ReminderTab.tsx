@@ -1,7 +1,27 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Course, RemindSettings } from '../types';
 import { SLOTS, toMinutes, isCourseInWeek, getWeekNo, getNextDayInfo } from '../utils/time';
-import { Bell, Volume2, ShieldCheck, Play, Moon, Calendar, Sparkles } from 'lucide-react';
+import {
+  Bell,
+  Volume2,
+  ShieldCheck,
+  Play,
+  Moon,
+  Calendar,
+  Sparkles,
+  Radio,
+  Smartphone,
+  CheckCircle,
+  RefreshCw,
+} from 'lucide-react';
+import {
+  isPushNotificationSupported,
+  getCurrentPushSubscription,
+  subscribeToPushNotifications,
+  unsubscribeFromPushNotifications,
+  sendServerTestPush,
+  fetchServerPushStatus,
+} from '../utils/pushManager';
 
 interface ReminderTabProps {
   settings: RemindSettings;
@@ -20,6 +40,79 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
   onTriggerSundayTestReminder,
   toast,
 }) => {
+  const [isPushSupported, setIsPushSupported] = useState(false);
+  const [isPushSubscribed, setIsPushSubscribed] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+  const [testingPush, setTestingPush] = useState(false);
+  const [serverDeviceCount, setServerDeviceCount] = useState<number>(0);
+
+  useEffect(() => {
+    const supported = isPushNotificationSupported();
+    setIsPushSupported(supported);
+
+    if (supported) {
+      getCurrentPushSubscription().then(sub => {
+        setIsPushSubscribed(!!sub);
+      });
+      fetchServerPushStatus().then(status => {
+        setServerDeviceCount(status.subscriptionCount);
+        if (status.hasSubscriptions) {
+          setIsPushSubscribed(true);
+        }
+      });
+    }
+  }, []);
+
+  const handleTogglePush = async () => {
+    if (pushLoading) return;
+    setPushLoading(true);
+
+    try {
+      if (isPushSubscribed) {
+        const res = await unsubscribeFromPushNotifications();
+        if (res.success) {
+          setIsPushSubscribed(false);
+          onUpdateSettings({ webPushEnabled: false });
+          toast(res.message);
+          const st = await fetchServerPushStatus();
+          setServerDeviceCount(st.subscriptionCount);
+        } else {
+          toast(res.message);
+        }
+      } else {
+        const res = await subscribeToPushNotifications();
+        if (res.success) {
+          setIsPushSubscribed(true);
+          onUpdateSettings({ webPushEnabled: true, sys: true });
+          toast(res.message);
+          const st = await fetchServerPushStatus();
+          setServerDeviceCount(st.subscriptionCount);
+        } else {
+          toast(res.message);
+        }
+      }
+    } catch (err: any) {
+      toast(err.message || '操作失败');
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
+  const handleTestServerPush = async () => {
+    if (testingPush) return;
+    setTestingPush(true);
+    toast('正在发送系统级 Web Push 测试推送，请立即熄屏或切到后台查看...');
+
+    try {
+      const res = await sendServerTestPush();
+      toast(res.message);
+    } catch (err: any) {
+      toast(err.message || '测试推送请求失败');
+    } finally {
+      setTestingPush(false);
+    }
+  };
+
   const now = new Date();
   const currentWeek = Math.max(1, Math.min(25, getWeekNo(now)));
   const todayDayIdx = (now.getDay() + 6) % 7;
@@ -98,6 +191,13 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
               ? '已被拒绝（需在浏览器设置中开启）'
               : '未授权'}
           </b>
+        </div>
+        <div>
+          锁屏离线推送：
+          <b className={isPushSubscribed ? 'text-[#4ade80]' : 'text-[#8f8b80]'}>
+            {isPushSubscribed ? `已激活 ✓ (当前账号已绑定 ${serverDeviceCount} 台设备)` : '未开启'}
+          </b>
+          {' ｜ '}作业截止临期：<b className="text-[#6b7cff]">24h / 3h 自动预警</b>
         </div>
         <div>
           明日早课情况：
@@ -244,6 +344,95 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
               {settings.everyEvePreview ? '开' : '关'}
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* Dedicated Web Push Card */}
+      <div className="bg-[#1f222a] border-2 border-[#4ade80]/60 p-4 rounded-lg shadow-lg text-[#e9e4d8] space-y-3.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Radio className="w-4 h-4 text-[#4ade80]" />
+            <h4 className="font-editorial font-bold text-base text-[#e9e4d8]">
+              锁屏与系统级 Web Push 离线推送
+            </h4>
+          </div>
+          <span className="text-[10px] px-2 py-0.5 rounded bg-[#4ade80]/20 text-[#4ade80] font-bold">
+            锁屏即达
+          </span>
+        </div>
+
+        <p className="text-xs text-[#a8a399] leading-relaxed">
+          采用标准 W3C Web Push 规范。<strong>无需打开网页或保持手机亮屏</strong>，即使手机黑屏休眠或切至后台，云端定时器也会在<strong>课前 15 分钟与作业截止前</strong>自动唤醒手机通知中心并震动提醒！
+        </p>
+
+        {/* Status indicator row */}
+        <div className="bg-[#16181d] border border-[#2e313b] p-3 rounded text-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[#8f8b80]">当前浏览器支持：</span>
+            <span className={isPushSupported ? 'text-[#4ade80] font-medium' : 'text-[#ff6b57] font-medium'}>
+              {isPushSupported ? '支持 Web Push ✓' : '暂不支持（建议使用 Chrome / Edge 或将应用添加到主屏幕）'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[#8f8b80]">当前设备推送状态：</span>
+            <span className={isPushSubscribed ? 'text-[#4ade80] font-bold' : 'text-[#8f8b80]'}>
+              {isPushSubscribed ? '已在此设备激活 ✓' : '未开启本设备推送'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[#8f8b80]">账号绑定接收设备数：</span>
+            <span className="text-[#e9e4d8] font-mono font-medium">
+              {serverDeviceCount} 台设备在线接收
+            </span>
+          </div>
+        </div>
+
+        {/* Toggle & Test Actions */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+          <button
+            type="button"
+            disabled={pushLoading}
+            onClick={handleTogglePush}
+            className={`py-2.5 px-3 rounded text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              isPushSubscribed
+                ? 'bg-[#2a2d36] text-[#e9e4d8] border border-[#4ade80]/40 hover:bg-[#323642]'
+                : 'bg-[#4ade80] text-[#1d1f24] hover:bg-[#3ec972] shadow-md shadow-[#4ade80]/20'
+            }`}
+          >
+            {pushLoading ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : isPushSubscribed ? (
+              <CheckCircle className="w-3.5 h-3.5 text-[#4ade80]" />
+            ) : (
+              <Bell className="w-3.5 h-3.5" />
+            )}
+            <span>
+              {pushLoading ? '处理中...' : isPushSubscribed ? '已开启锁屏推送 (点击注销)' : '开启锁屏系统推送'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            disabled={testingPush || !isPushSubscribed}
+            onClick={handleTestServerPush}
+            className={`py-2.5 px-3 rounded text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer border ${
+              isPushSubscribed
+                ? 'bg-[#262832] border-[#6b7cff] text-[#6b7cff] hover:bg-[#6b7cff] hover:text-white'
+                : 'bg-[#1b1c22] border-[#33363d] text-[#62605b] cursor-not-allowed'
+            }`}
+          >
+            {testingPush ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Smartphone className="w-3.5 h-3.5" />
+            )}
+            <span>{testingPush ? '发送测试推送中...' : '发送锁屏测试通知 (可熄屏验证)'}</span>
+          </button>
+        </div>
+
+        {/* Device hints */}
+        <div className="text-[11px] text-[#78746c] leading-relaxed border-t border-[#2e313b] pt-2">
+          💡 锁屏提醒说明：点击“开启锁屏系统推送”授权后，即使手机锁屏放入书包，云端也会在开课前 15 分钟及作业临期 24h / 3h 准时推送；iOS 用户需先在 Safari 中“添加到主屏幕”开启系统通知。
         </div>
       </div>
 

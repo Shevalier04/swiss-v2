@@ -12,6 +12,64 @@ export function formatDate(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+export function formatDateTime(d: Date, hour = 22, minute = 0): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(hour)}:${pad2(minute)}`;
+}
+
+export function extractTimeFromText(text: string): { hour: number; minute: number } | null {
+  const s = text.trim();
+  // 1. HH:mm or HH:mm:ss
+  const colonMatch = s.match(/(?:[早晨上午中午下午傍晚夜间凌晨半夜晚上晚]|上)?\s*(\d{1,2})\s*[:：]\s*(\d{2})/);
+  if (colonMatch) {
+    let h = parseInt(colonMatch[1], 10);
+    const m = parseInt(colonMatch[2], 10);
+    const isPm = /下午|傍晚|晚上|今晚|明晚|夜间/.test(s) || /下午|傍晚|晚上|今晚|明晚|夜间/.test(colonMatch[0]);
+    if (isPm && h < 12) h += 12;
+    return { hour: Math.min(23, Math.max(0, h)), minute: Math.min(59, Math.max(0, m)) };
+  }
+
+  // 2. X点半 or X点Y分 or X点
+  const pointMatch = s.match(/(?:([早晨上午中午下午傍晚夜间凌晨半夜晚上晚]|上)?\s*)?(\d{1,2})\s*点\s*(半|整|\d{1,2}\s*分?)?/);
+  if (pointMatch) {
+    let h = parseInt(pointMatch[2], 10);
+    let m = 0;
+    const modifier = pointMatch[1] || '';
+    const minutePart = pointMatch[3] || '';
+    if (minutePart.includes('半')) m = 30;
+    else if (/\d+/.test(minutePart)) m = parseInt(minutePart.match(/\d+/)![0], 10);
+
+    const isPm = /下午|傍晚|晚上|今晚|明晚|夜间/.test(s) || /下午|傍晚|晚上|今晚|明晚|夜间/.test(modifier);
+    if (isPm && h < 12) h += 12;
+    return { hour: Math.min(23, Math.max(0, h)), minute: Math.min(59, Math.max(0, m)) };
+  }
+
+  // 3. X时 or X时Y分
+  const hourMatch = s.match(/(\d{1,2})\s*时\s*(半|\d{1,2}\s*分?)?/);
+  if (hourMatch) {
+    let h = parseInt(hourMatch[1], 10);
+    let m = 0;
+    if (hourMatch[2]?.includes('半')) m = 30;
+    else if (hourMatch[2] && /\d+/.test(hourMatch[2])) m = parseInt(hourMatch[2].match(/\d+/)![0], 10);
+    return { hour: Math.min(23, Math.max(0, h)), minute: Math.min(59, Math.max(0, m)) };
+  }
+
+  // 4. Words
+  if (s.includes('今晚') || s.includes('明晚') || s.includes('晚上') || s.includes('夜里') || s.includes('晚')) {
+    return { hour: 22, minute: 0 };
+  }
+  if (s.includes('中午')) {
+    return { hour: 12, minute: 0 };
+  }
+  if (s.includes('下午') || s.includes('傍晚')) {
+    return { hour: 18, minute: 0 };
+  }
+  if (s.includes('早上') || s.includes('早晨') || s.includes('上午')) {
+    return { hour: 8, minute: 0 };
+  }
+
+  return null;
+}
+
 /**
  * 常见高校课程简称/别名映射字典，用于将群消息中的口语化简称映射到标准课程库
  */
@@ -243,27 +301,31 @@ export function parseNaturalDate(raw: string, baseDate = new Date()): string | n
   const month = baseDate.getMonth();
   const date = baseDate.getDate();
 
+  const timeInfo = extractTimeFromText(raw);
+  const hour = timeInfo ? timeInfo.hour : 22;
+  const minute = timeInfo ? timeInfo.minute : 0;
+
   // 1. 今天 / 今晚
   if (s.includes('今天') || s.includes('今晚') || s === 'today') {
-    return formatDate(baseDate);
+    return formatDateTime(baseDate, hour, minute);
   }
 
   // 2. 明天 / 明晚 / 次日
   if (s.includes('明天') || s.includes('明晚') || s.includes('次日') || s === 'tomorrow') {
     const d = new Date(year, month, date + 1);
-    return formatDate(d);
+    return formatDateTime(d, hour, minute);
   }
 
   // 3. 后天
   if (s.includes('后天')) {
     const d = new Date(year, month, date + 2);
-    return formatDate(d);
+    return formatDateTime(d, hour, minute);
   }
 
   // 4. 大后天
   if (s.includes('大后天')) {
     const d = new Date(year, month, date + 3);
-    return formatDate(d);
+    return formatDateTime(d, hour, minute);
   }
 
   // 5. N天后 (如 3天后)
@@ -271,7 +333,7 @@ export function parseNaturalDate(raw: string, baseDate = new Date()): string | n
   if (daysLaterMatch) {
     const addDays = parseInt(daysLaterMatch[1], 10);
     const d = new Date(year, month, date + addDays);
-    return formatDate(d);
+    return formatDateTime(d, hour, minute);
   }
 
   // 6. 周末 / 本周末 / 下周末
@@ -279,13 +341,13 @@ export function parseNaturalDate(raw: string, baseDate = new Date()): string | n
     const curWeekday = baseDate.getDay() === 0 ? 7 : baseDate.getDay();
     const diff = 7 - curWeekday + 7;
     const d = new Date(year, month, date + diff);
-    return formatDate(d);
+    return formatDateTime(d, hour, minute);
   }
   if (s.includes('周末') || s.includes('本周末')) {
     const curWeekday = baseDate.getDay() === 0 ? 7 : baseDate.getDay();
     const diff = 7 - curWeekday;
     const d = new Date(year, month, date + diff);
-    return formatDate(d);
+    return formatDateTime(d, hour, minute);
   }
 
   // 7. 周几 / 星期几 / 礼拜几 (含 下周X / 本周X)
@@ -309,11 +371,10 @@ export function parseNaturalDate(raw: string, baseDate = new Date()): string | n
       if (isNextWeek) {
         diff = (targetWeekday - curWeekday + 7);
       } else if (diff < 0) {
-        // 如果提到的星期几已经过了，默认指下周该天
         diff += 7;
       }
       const d = new Date(year, month, date + diff);
-      return formatDate(d);
+      return formatDateTime(d, hour, minute);
     }
   }
 
@@ -323,7 +384,7 @@ export function parseNaturalDate(raw: string, baseDate = new Date()): string | n
     const y = parseInt(fullDateMatch[1], 10);
     const m = parseInt(fullDateMatch[2], 10);
     const dayVal = parseInt(fullDateMatch[3], 10);
-    return `${y}-${pad2(m)}-${pad2(dayVal)}`;
+    return `${y}-${pad2(m)}-${pad2(dayVal)} ${pad2(hour)}:${pad2(minute)}`;
   }
 
   // 9. 短日期 MM-DD, M.D, M月D日, M/D
@@ -331,7 +392,7 @@ export function parseNaturalDate(raw: string, baseDate = new Date()): string | n
   if (shortDateMatch) {
     const m = parseInt(shortDateMatch[1], 10);
     const dayVal = parseInt(shortDateMatch[2], 10);
-    return `${year}-${pad2(m)}-${pad2(dayVal)}`;
+    return `${year}-${pad2(m)}-${pad2(dayVal)} ${pad2(hour)}:${pad2(minute)}`;
   }
 
   // 10. 单独的 "X号" 或 "X日" (如 "25号前", "18日截止")
@@ -339,7 +400,6 @@ export function parseNaturalDate(raw: string, baseDate = new Date()): string | n
   if (dayOnlyMatch) {
     const dayVal = parseInt(dayOnlyMatch[1], 10);
     if (dayVal >= 1 && dayVal <= 31) {
-      // 若该号数小于当前日期，推断为下个月的该号数
       let targetMonth = month;
       let targetYear = year;
       if (dayVal < date) {
@@ -349,7 +409,7 @@ export function parseNaturalDate(raw: string, baseDate = new Date()): string | n
           targetYear += 1;
         }
       }
-      return `${targetYear}-${pad2(targetMonth + 1)}-${pad2(dayVal)}`;
+      return `${targetYear}-${pad2(targetMonth + 1)}-${pad2(dayVal)} ${pad2(hour)}:${pad2(minute)}`;
     }
   }
 

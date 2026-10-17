@@ -55,4 +55,5 @@ export interface RemindSettings {
   sundayEveHour: number; // 提醒时间点，如 20 (20:00)
   sundayAutoAdvance: boolean; // 周日晚间 (>=18:00) 课表与小组件自动提前更新至下周
   everyEvePreview: boolean; // 每日晚间 (>=20:00) 提前预告明日早课
+  webPushEnabled?: boolean; // 系统级 Web Push 锁屏/离线推送
 }

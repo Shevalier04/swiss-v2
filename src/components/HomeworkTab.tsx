@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Course, Homework, User, TaskItem } from '../types';
-import { dueDays, pad2 } from '../utils/time';
+import { dueDays, pad2, calculateDetailedRemaining } from '../utils/time';
 import { parseQuickHomeworkLine } from '../utils/assignmentParser';
 import {
   Trash2,
@@ -150,8 +150,9 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
       return;
     }
     setSubmitting(true);
+    const formattedDue = manualDueDate ? manualDueDate.replace('T', ' ') : undefined;
     try {
-      await onAdd(selectedCourse || courseNames[0] || '其他', manualTitle.trim(), manualDueDate || undefined);
+      await onAdd(selectedCourse || courseNames[0] || '其他', manualTitle.trim(), formattedDue);
       setManualTitle('');
       setManualDueDate('');
       setShowManualForm(false);
@@ -390,17 +391,17 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[#8f8b80] font-mono">快捷时间:</span>
             {[
-              { label: '@明天', val: '@明天' },
-              { label: '@后天', val: '@后天' },
-              { label: '@周五', val: '@周五' },
-              { label: '@周日', val: '@周日' },
-              { label: '@今天', val: '@今天' },
+              { label: '@明天 20:00', val: '@明天 20:00' },
+              { label: '@明天 22:00', val: '@明天 22:00' },
+              { label: '@今晚 22:00', val: '@今晚 22:00' },
+              { label: '@周日 23:59', val: '@周日 23:59' },
+              { label: '@后天 22:00', val: '@后天 22:00' },
             ].map(t => (
               <button
                 key={t.val}
                 type="button"
                 onClick={() => handleAppendDateTag(t.val)}
-                className="px-2 py-0.5 bg-[#1a1c22] hover:bg-[#6b7cff]/20 text-[#8f8b80] hover:text-[#6b7cff] border border-[#33363d] rounded cursor-pointer transition-colors font-mono"
+                className="px-2 py-0.5 bg-[#1a1c22] hover:bg-[#6b7cff]/20 text-[#8f8b80] hover:text-[#6b7cff] border border-[#33363d] rounded cursor-pointer transition-colors font-mono text-[10.5px]"
               >
                 {t.label}
               </button>
@@ -425,7 +426,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
               key={cName}
               type="button"
               onClick={() => handlePickCourseTag(cName)}
-              className="px-2 py-0.5 bg-[#1f222a] hover:bg-[#2b303d] text-[#e9e4d8] border border-[#3a3d46] rounded cursor-pointer transition-colors truncate max-w-[120px]"
+              className="px-2 py-0.5 bg-[#1f222a] hover:bg-[#2b303d] text-[#e9e4d8] border border-[#33363d] rounded cursor-pointer transition-colors truncate max-w-[120px]"
             >
               {cName}
             </button>
@@ -456,15 +457,36 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
             </div>
 
             <div>
-              <label className="block text-[9.5px] font-bold tracking-wider text-[#8f8b80] mb-1">
-                截止日期 (可选)
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[9.5px] font-bold tracking-wider text-[#8f8b80]">
+                  截止时间 (精确到小时)
+                </label>
+                <span className="text-[9px] text-[#6b7cff] font-mono">含钟点</span>
+              </div>
               <input
-                type="date"
+                type="datetime-local"
                 value={manualDueDate}
                 onChange={e => setManualDueDate(e.target.value)}
-                className="w-full bg-[#181a1f] border border-[#33363d] text-xs text-[#e9e4d8] py-1 px-2 rounded outline-none"
+                className="w-full bg-[#181a1f] border border-[#33363d] focus:border-[#6b7cff] text-xs text-[#e9e4d8] py-1 px-2 rounded outline-none font-mono"
               />
+              <div className="flex items-center gap-1 mt-1 flex-wrap">
+                {['18:00', '20:00', '22:00', '23:59'].map(h => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => {
+                      const cur = manualDueDate ? new Date(manualDueDate) : new Date();
+                      const y = cur.getFullYear();
+                      const m = String(cur.getMonth() + 1).padStart(2, '0');
+                      const d = String(cur.getDate()).padStart(2, '0');
+                      setManualDueDate(`${y}-${m}-${d}T${h}`);
+                    }}
+                    className="text-[9px] px-1.5 py-0.2 bg-[#20222a] text-[#8ea4ff] hover:bg-[#6b7cff]/20 rounded border border-[#33363d] font-mono cursor-pointer"
+                  >
+                    {h}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div>
@@ -613,15 +635,20 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
 
                   <div className="flex items-center gap-3 text-xs text-[#8f8b80] mt-1">
                     {item.due ? (
-                      <span
-                        className={`flex items-center gap-1 font-mono font-bold ${
-                          isUrgent ? 'text-[#ff6b57]' : isSoon ? 'text-[#e0a050]' : 'text-[#8f8b80]'
-                        }`}
-                      >
-                        <Clock className="w-3 h-3" />
-                        <span>截止: {item.due}</span>
-                        <span>({d < 0 ? '已逾期' : d === 0 ? '今天截止' : `${d}天后`})</span>
-                      </span>
+                      (() => {
+                        const detailed = calculateDetailedRemaining(item.due);
+                        return (
+                          <span
+                            className={`flex items-center gap-1 font-mono font-bold flex-wrap ${
+                              detailed.isOverdue || detailed.isUrgent ? 'text-[#ff6b57]' : isSoon ? 'text-[#e0a050]' : 'text-[#8f8b80]'
+                            }`}
+                          >
+                            <Clock className="w-3 h-3" />
+                            <span>截止: {item.due}</span>
+                            <span className="text-[11px] font-normal opacity-90">({detailed.remainingTime})</span>
+                          </span>
+                        );
+                      })()
                     ) : (
                       <span className="text-[#63605a] font-mono">无具体截止日期</span>
                     )}

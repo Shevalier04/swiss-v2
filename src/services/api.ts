@@ -651,6 +651,20 @@ export const api = {
     }
   },
 
+  async updateStudentName(username: string, name: string): Promise<{ success: boolean; name: string }> {
+    try {
+      const res = await request<{ success: boolean; name: string }>(`/admin/users/${encodeURIComponent(username)}/rename`, {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      });
+      saveCustomDisplayName(username, name);
+      return res;
+    } catch (e: any) {
+      saveCustomDisplayName(username, name);
+      return { success: true, name };
+    }
+  },
+
   async toggleUserDisabled(username: string): Promise<{ disabled: boolean }> {
     try {
       const res = await request<{ disabled: boolean }>(`/admin/users/${encodeURIComponent(username)}/toggle-disabled`, {
