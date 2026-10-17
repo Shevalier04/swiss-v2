@@ -45,7 +45,10 @@ export const FloatingPomodoroWidget: React.FC<FloatingPomodoroWidgetProps> = ({ 
     return () => clearInterval(interval);
   }, []);
 
-  if (!timerState || !timerState.isRunning) {
+  const dismissedTarget = sessionStorage.getItem('pomodoro_dismissed_target');
+  const isDismissed = timerState && dismissedTarget === String(timerState.targetEndTime);
+
+  if (isDismissed || !timerState || !timerState.isRunning) {
     return null;
   }
 
@@ -63,12 +66,14 @@ export const FloatingPomodoroWidget: React.FC<FloatingPomodoroWidgetProps> = ({ 
   const modeColor =
     timerState.mode === 'work' ? '#ff6b57' : timerState.mode === 'shortBreak' ? '#4ade80' : '#eab308';
 
-  const handlePause = (e: React.MouseEvent) => {
+  const handleDismiss = (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      localStorage.removeItem('pomodoro_running_state');
+      if (timerState) {
+        sessionStorage.setItem('pomodoro_dismissed_target', String(timerState.targetEndTime));
+      }
     } catch {}
-    setTimerState(null);
+    setTimerState({ ...timerState! });
   };
 
   return (
@@ -107,9 +112,9 @@ export const FloatingPomodoroWidget: React.FC<FloatingPomodoroWidgetProps> = ({ 
 
       <button
         type="button"
-        onClick={handlePause}
+        onClick={handleDismiss}
         className="p-1.5 bg-[#252834] hover:bg-[#303444] text-[#8f8b80] hover:text-[#e9e4d8] rounded-lg transition-colors ml-1"
-        title="停止专注"
+        title="关闭悬浮窗（番茄钟继续在后台计时）"
       >
         <X className="w-4 h-4" />
       </button>

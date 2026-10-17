@@ -651,7 +651,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
            return (
             <div
               key={item.id}
-              className={`flex items-center gap-3.5 py-3 -mx-2 px-2.5 rounded transition-all duration-150 hover:bg-[#20222a]/70 group/row ${
+              className={`flex items-start gap-3 py-3 -mx-2 px-2.5 rounded transition-all duration-150 hover:bg-[#20222a]/70 group/row ${
                 item.done ? 'opacity-40' : ''
               }`}
             >
@@ -736,72 +736,75 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
                 </div>
               </div>
 
-              {/* One-click Add to Tasks / Jump to Pomodoro Focus */}
-              {!item.done && (
-                <div className="shrink-0 flex items-center pt-0.5">
-                  {!existingTask ? (
-                    <button
-                      type="button"
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        if (onAddTask) {
-                          try {
-                            await onAddTask(taskTitle);
-                            toast(`已顺手加入待办：${taskTitle}`);
-                          } catch (err: any) {
-                            toast('加入待办失败，请重试');
+              {/* Right-side action buttons container (stacked vertically) */}
+              <div className="shrink-0 flex flex-col items-end gap-2 pt-0.5">
+                {/* One-click Add to Tasks / Jump to Pomodoro Focus */}
+                {!item.done && (
+                  <div>
+                    {!existingTask ? (
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (onAddTask) {
+                            try {
+                              await onAddTask(taskTitle);
+                              toast(`已顺手加入待办：${taskTitle}`);
+                            } catch (err: any) {
+                              toast('加入待办失败，请重试');
+                            }
                           }
-                        }
-                      }}
-                      className="px-2 py-0.5 border border-[#3a3d46] hover:border-[#6b7cff] text-[#8f8b80] hover:text-[#6b7cff] text-[11px] rounded transition-all cursor-pointer flex items-center gap-1 active:scale-95 group/btn"
-                      title="顺手将此项作业加到个人待办清单，方便规划与专注"
-                    >
-                      <Plus className="w-3 h-3 group-hover/btn:scale-110 transition-transform" />
-                      <span>待办</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (onJumpToFocusTask) {
-                          onJumpToFocusTask(existingTask.title);
-                        }
-                      }}
-                      className="px-2 py-0.5 bg-[#6b7cff]/20 hover:bg-[#6b7cff] text-[#6b7cff] hover:text-white border border-[#6b7cff]/40 hover:border-[#6b7cff] text-[11px] font-bold rounded transition-all cursor-pointer flex items-center gap-1 shadow-xs active:scale-95"
-                      title="此作业已在待办中，点击立即切换至专注番茄钟开始计时"
-                    >
-                      <span>🍅 去专注</span>
-                    </button>
-                  )}
+                        }}
+                        className="px-2 py-1 border border-[#3a3d46] hover:border-[#6b7cff] text-[#8f8b80] hover:text-[#6b7cff] text-[11px] rounded transition-all cursor-pointer flex items-center gap-1 active:scale-95 group/btn shadow-xs bg-[#1f222c]"
+                        title="顺手将此项作业加到个人待办清单，方便规划与专注"
+                      >
+                        <Plus className="w-3 h-3 group-hover/btn:scale-110 transition-transform" />
+                        <span>待办</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onJumpToFocusTask) {
+                            onJumpToFocusTask(existingTask.title);
+                          }
+                        }}
+                        className="px-2 py-1 bg-[#6b7cff]/20 hover:bg-[#6b7cff] text-[#6b7cff] hover:text-white border border-[#6b7cff]/40 hover:border-[#6b7cff] text-[11px] font-bold rounded transition-all cursor-pointer flex items-center gap-1 shadow-xs active:scale-95"
+                        title="此作业已在待办中，点击立即切换至专注番茄钟开始计时"
+                      >
+                        <span>🍅 去专注</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Edit & Delete buttons row */}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingHomework(item);
+                    }}
+                    className="text-[#63605a] hover:text-[#6b7cff] transition-colors p-1 rounded hover:bg-[#252834] cursor-pointer shrink-0"
+                    title="编辑作业"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(item.id);
+                    }}
+                    className="text-[#63605a] hover:text-[#ff6b57] transition-colors p-1 rounded hover:bg-[#252834] cursor-pointer shrink-0"
+                    title="删除"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-              )}
-
-              {/* Edit button */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditingHomework(item);
-                }}
-                className="text-[#63605a] hover:text-[#6b7cff] transition-colors p-1.5 -m-0.5 cursor-pointer shrink-0"
-                title="编辑作业"
-              >
-                <Pencil className="w-4 h-4" />
-              </button>
-
-              {/* Delete button */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(item.id);
-                }}
-                className="text-[#63605a] hover:text-[#ff6b57] transition-colors p-1.5 -m-0.5 cursor-pointer shrink-0"
-                title="删除"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              </div>
             </div>
           );
         };

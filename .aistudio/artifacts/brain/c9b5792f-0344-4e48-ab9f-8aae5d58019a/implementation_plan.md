@@ -1,18 +1,43 @@
-# Implementation Plan - 根据截图精细调整平台图标视觉细节
+# Persistent Floating Pomodoro Widget Implementation Plan
 
-## 需求分析
-用户指出：“图标参考我发给你的图片啊”，并要求全部参照截图重新精细调整。
-对照用户上传的截图：
-1. **课堂派**：蓝色渐变圆角图标，带有白色 `A+` 样式。
-2. **超星学习通**：红色渐变圆角图标，带有经典的白色流星/弧线轨迹标志。
-3. **PTA**：蓝色圆角图标，带有代码符号与 PTA 文字。
-4. **明理云盘**：紫色圆角图标，带有云端存储标志。
+Implement a persistent, floating Pomodoro timer widget that stays active on screen even when the user navigates away or the app is in the background, continuing to tick until manually stopped, and only closing when explicitly clicked via its close ('X') button.
 
-## 实施步骤
-1. **优化图标组件设计** (`src/components/HomeworkTab.tsx`)：
-   - 调整 **课堂派** 图标：更精确的蔚蓝色渐变、白色粗体 A+ 符号与圆角边框。
-   - 调整 **学习通** 图标：更精确的中国红渐变、白色流星弧线轨迹与星轨图形。
-   - 调整 **PTA** 图标：精细的深蓝/科技蓝渐变、代码括号 `< / >` 与 PTA 标识。
-   - 调整 **明理云盘** 图标：优雅的紫色渐变与精美云朵矢量。
-2. **构建与验证**：
-   - 运行 `compile_applet` 和 `lint_applet` 确保构建通过。
+## User Review & Critical Decisions
+
+> [!IMPORTANT]
+> - **Persistent Floating Widget**: Will float on top of all views (bottom-right corner by default with drag support).
+> - **Background Persistence**: Timer continues running across tab/view switches and background states.
+> - **Explicit Close vs Stop**: Clicking 'X' minimizes/closes the floating widget (while timer continues running in the background state); clicking "Stop" or "Reset" inside the timer fully stops the session.
+
+## 1. Overview & Core Concept
+
+- **What It Does**: Elevates the Pomodoro timer into a floating, persistent overlay widget that floats at the bottom-right of the screen. It can be dragged around, minimized/closed via 'X' (without stopping the active timer), and keeps running continuously across views until manually stopped or completed.
+- **Key Value**: Allows students and professionals to keep track of their study/work focus sessions anywhere in the app without interrupting their countdown when switching tabs.
+
+## 2. User Experience & Visual Design
+
+- **Floating Widget UI**:
+  - Compact, sleek pill/card floating widget pinned to bottom-right (`fixed bottom-6 right-6 z-50`).
+  - Displays countdown MM:SS, current mode (Focus / Short Break / Long Break), active task name, and playback controls (Start/Pause, Stop, Close 'X', Expand/Collapse).
+  - Drag support via header handle so users can reposition it anywhere on screen.
+- **Visual Identity**: Dark glassy backdrop (`bg-[#181a20]/95 backdrop-blur-md border border-[#6b7cff]/40 shadow-xl rounded-2xl p-3.5 text-white`) matching the app's aesthetic.
+
+## 3. Technical Architecture & Data Strategy
+
+```
+┌────────────────────────────────────────────────────────┐
+│                   App-Level State / Context            │
+│  - pomodoroTimeRemaining, pomodoroRunning, pomodoroMode│
+│  - isFloatingWidgetOpen, floatingWidgetPosition        │
+└───────────┬────────────────────────────────────────────┘
+            │
+            ├────────────────────────────────────────────┐
+            ▼                                            ▼
+┌───────────────────────┐                    ┌───────────────────────┐
+│     PomodoroTab       │                    │  PersistentFloating   │
+│  (Full Timer View)    │                    │     PomodoroWidget    │
+└───────────────────────┘                    └───────────────────────┘
+```
+
+- **State Persistence**: Store timer state and floating widget visibility (`isFloatingWidgetOpen`, timer start timestamp / remaining seconds) in React state or localStorage/global context so it persists across tab switches and background states.
+- **Timer Engine**: Use a robust `setInterval` / `requestAnimationFrame` or timestamp-based diff calculation so background timing stays accurate.

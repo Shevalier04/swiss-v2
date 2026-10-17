@@ -423,45 +423,49 @@ apiRouter.post('/assignments', handlePostAssignments);
 
 // PUT /api/homework & /api/assignments (toggle or update)
 const handleUpdateAssignment = (req: Request, res: Response) => {
-  const username = getCurrentUser(req);
-  if (!username) return res.status(401).json({ error: '未登录' });
+  try {
+    const username = getCurrentUser(req);
+    if (!username) return res.status(401).json({ success: false, error: '未登录' });
 
-  const id = Number(req.params?.id || req.body?.id);
-  if (!id) return res.status(400).json({ error: '请提供作业 id' });
+    const id = Number(req.params?.id || req.body?.id || req.body?.homework_id);
+    if (!id || isNaN(id)) return res.status(400).json({ success: false, error: '请提供有效的作业 id' });
 
-  const { course, title, due, deadline, done, completed } = req.body || {};
-  const courseVal = course !== undefined ? course : req.body?.course_name;
-  const dueVal = due !== undefined ? due : deadline;
-  const doneVal = done !== undefined ? done : (completed !== undefined ? Boolean(completed) : undefined);
+    const { course, title, due, deadline, done, completed } = req.body || {};
+    const courseVal = course !== undefined ? course : req.body?.course_name;
+    const dueVal = due !== undefined ? due : deadline;
+    const doneVal = done !== undefined ? done : (completed !== undefined ? Boolean(completed) : undefined);
 
-  let updated;
-  if (courseVal !== undefined || title !== undefined || dueVal !== undefined || doneVal !== undefined) {
-    updated = dbStore.updateHomework(username, id, {
-      course: courseVal,
-      title,
-      due: dueVal,
-      done: doneVal,
+    let updated;
+    if (courseVal !== undefined || title !== undefined || dueVal !== undefined || doneVal !== undefined) {
+      updated = dbStore.updateHomework(username, id, {
+        course: courseVal,
+        title,
+        due: dueVal,
+        done: doneVal,
+      });
+    } else {
+      updated = dbStore.toggleHomework(username, id);
+    }
+
+    const formattedItem = {
+      id: updated.id,
+      course: updated.course,
+      course_name: updated.course,
+      title: updated.title,
+      due: updated.due,
+      deadline: updated.due,
+      done: updated.done,
+      completed: updated.done ? 1 : 0,
+    };
+
+    return res.json({
+      success: true,
+      homework: updated,
+      assignment: formattedItem,
     });
-  } else {
-    updated = dbStore.toggleHomework(username, id);
+  } catch (err: any) {
+    return res.status(400).json({ success: false, error: err.message || '更新作业失败' });
   }
-
-  const formattedItem = {
-    id: updated.id,
-    course: updated.course,
-    course_name: updated.course,
-    title: updated.title,
-    due: updated.due,
-    deadline: updated.due,
-    done: updated.done,
-    completed: updated.done ? 1 : 0,
-  };
-
-  return res.json({
-    success: true,
-    homework: updated,
-    assignment: formattedItem,
-  });
 };
 
 apiRouter.put('/homework/:id/toggle', handleUpdateAssignment);
