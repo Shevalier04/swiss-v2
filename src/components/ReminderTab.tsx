@@ -13,7 +13,9 @@ import {
   Smartphone,
   CheckCircle,
   RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
+import { NotificationGuideModal } from './NotificationGuideModal';
 import {
   detectNotificationCapability,
   NotificationCapability,
@@ -46,6 +48,7 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
 }) => {
   const [capability, setCapability] = useState<NotificationCapability>(() => detectNotificationCapability());
   const [showHuaweiGuide, setShowHuaweiGuide] = useState(false);
+  const [showUnblockGuide, setShowUnblockGuide] = useState(false);
   const [localSysPermission, setLocalSysPermission] = useState<NotificationPermission | 'unsupported'>(() => {
     return typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
   });
@@ -74,8 +77,35 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
     }
   }, []);
 
+  const handlePermissionRecovered = async () => {
+    setLocalSysPermission('granted');
+    onUpdateSettings({ sys: true });
+    const cap = detectNotificationCapability();
+    setCapability(cap);
+
+    if (cap.hasPushManager) {
+      try {
+        const res = await subscribeToPushNotifications();
+        if (res.success) {
+          setIsPushSubscribed(true);
+          onUpdateSettings({ webPushEnabled: true });
+          const st = await fetchServerPushStatus();
+          setServerDeviceCount(st.subscriptionCount);
+        }
+      } catch {}
+    }
+  };
+
   const handleTogglePush = async () => {
     if (pushLoading) return;
+
+    if (!isPushSubscribed) {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+        setShowUnblockGuide(true);
+        return;
+      }
+    }
+
     setPushLoading(true);
 
     try {
@@ -100,6 +130,9 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
           setServerDeviceCount(st.subscriptionCount);
         } else {
           toast(res.message);
+          if (res.isBlocked || (typeof Notification !== 'undefined' && Notification.permission === 'denied')) {
+            setShowUnblockGuide(true);
+          }
         }
       }
     } catch (err: any) {
@@ -111,6 +144,10 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
 
   const handleTestServerPush = async () => {
     if (testingPush) return;
+    if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+      setShowUnblockGuide(true);
+      return;
+    }
     setTestingPush(true);
     toast('正在发送系统级 Web Push 测试推送，请立即熄屏或切到后台查看...');
 
@@ -125,6 +162,11 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
   };
 
   const handleRequestLocalPermission = async () => {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+      setShowUnblockGuide(true);
+      return;
+    }
+
     const res = await requestLocalSystemPermission();
     setLocalSysPermission(res.status);
     if (res.granted) {
@@ -132,10 +174,17 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
       toast(res.message);
     } else {
       toast(res.message);
+      if (res.isBlocked || res.status === 'denied') {
+        setShowUnblockGuide(true);
+      }
     }
   };
 
   const handleTestLocalNotification = async () => {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+      setShowUnblockGuide(true);
+      return;
+    }
     const res = await sendLocalTestNotification();
     toast(res.message);
   };
@@ -165,13 +214,23 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
       toast('当前浏览器环境不支持系统级通知');
       return;
     }
+    if (Notification.permission === 'denied') {
+      setShowUnblockGuide(true);
+      return;
+    }
     try {
       const res = await Notification.requestPermission();
       if (res === 'granted') {
         onUpdateSettings({ sys: true });
+        setLocalSysPermission('granted');
         toast('系统通知权限已开启');
       } else {
-        toast('未开启通知权限，请在浏览器地址栏或手机设置中允许');
+        setLocalSysPermission(res);
+        if (res === 'denied') {
+          setShowUnblockGuide(true);
+        } else {
+          toast('未开启通知权限，请在浏览器地址栏或手机设置中允许');
+        }
       }
     } catch (e) {
       toast('通知权限请求失败');
@@ -215,9 +274,19 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
             {notificationPermission === 'granted'
               ? '已授权 ✓'
               : notificationPermission === 'denied'
-              ? '已被拒绝（需在浏览器设置中开启）'
+              ? '已被浏览器拒绝/拦截'
               : '未授权'}
           </b>
+          {notificationPermission === 'denied' && (
+            <button
+              type="button"
+              onClick={() => setShowUnblockGuide(true)}
+              className="ml-2 px-1.5 py-0.5 rounded bg-[#ff6b57]/20 border border-[#ff6b57]/40 text-[#ff8f80] hover:text-white text-[10.5px] font-bold cursor-pointer inline-flex items-center gap-1 transition-colors"
+            >
+              <AlertTriangle className="w-3 h-3 text-[#ff6b57]" />
+              <span>解除拦截指引与一键重检</span>
+            </button>
+          )}
         </div>
         <div>
           {capability.hasPushManager ? '锁屏离线推送：' : '系统通知机制：'}
@@ -415,6 +484,26 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
             </div>
           </div>
 
+          {/* Blocked Permission Alert Banner */}
+          {notificationPermission === 'denied' && (
+            <div className="bg-[#ff6b57]/15 border border-[#ff6b57]/50 p-3 rounded-lg text-xs space-y-2">
+              <div className="flex items-center gap-2 text-[#ff8f80] font-bold">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-[#ff6b57]" />
+                <span>通知已被手机浏览器拦截，暂时无法接收锁屏通知</span>
+              </div>
+              <p className="text-[11px] text-[#a8a399] leading-relaxed">
+                手机浏览器曾记录过禁止通知。点击下方指引仅需 10 秒即可在浏览器设置中一键解除！
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowUnblockGuide(true)}
+                className="w-full py-2 bg-[#ff6b57] hover:bg-[#e05643] text-white font-bold text-xs rounded transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-[#ff6b57]/20"
+              >
+                <span>查看解除指引并一键重新检测</span>
+              </button>
+            </div>
+          )}
+
           {/* Toggle & Test Actions */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
             <button
@@ -501,6 +590,26 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
               </span>
             </div>
           </div>
+
+          {/* Blocked Permission Alert Banner */}
+          {(localSysPermission === 'denied' || notificationPermission === 'denied') && (
+            <div className="bg-[#ff6b57]/15 border border-[#ff6b57]/50 p-3 rounded-lg text-xs space-y-2">
+              <div className="flex items-center gap-2 text-[#ff8f80] font-bold">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-[#ff6b57]" />
+                <span>手机浏览器已拦截系统通知权限</span>
+              </div>
+              <p className="text-[11px] text-[#a8a399] leading-relaxed">
+                当前通知权限已被设为禁止。请按照图文指引将通知权限切换为“允许”后重新检测！
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowUnblockGuide(true)}
+                className="w-full py-2 bg-[#ff6b57] hover:bg-[#e05643] text-white font-bold text-xs rounded transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-[#ff6b57]/20"
+              >
+                <span>查看解除指引并一键重新检测</span>
+              </button>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
@@ -775,6 +884,14 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* Browser Notification Unblock Guide Modal */}
+      <NotificationGuideModal
+        isOpen={showUnblockGuide}
+        onClose={() => setShowUnblockGuide(false)}
+        onPermissionGranted={handlePermissionRecovered}
+        toast={toast}
+      />
     </div>
   );
 };

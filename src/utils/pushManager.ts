@@ -134,6 +134,7 @@ export async function getCurrentPushSubscription(): Promise<PushSubscription | n
 export async function subscribeToPushNotifications(): Promise<{
   success: boolean;
   message: string;
+  isBlocked?: boolean;
   subscription?: PushSubscription;
 }> {
   if (!isPushNotificationSupported()) {
@@ -149,6 +150,7 @@ export async function subscribeToPushNotifications(): Promise<{
     if (permission !== 'granted') {
       return {
         success: false,
+        isBlocked: permission === 'denied',
         message: permission === 'denied'
           ? '通知权限已被拒绝，请在浏览器地址栏权限设置中允许通知'
           : '未完成通知授权',
@@ -320,12 +322,14 @@ export async function fetchServerPushStatus(): Promise<{
 export async function requestLocalSystemPermission(): Promise<{
   granted: boolean;
   status: NotificationPermission | 'unsupported';
+  isBlocked?: boolean;
   message: string;
 }> {
   if (typeof window === 'undefined' || !('Notification' in window)) {
     return {
       granted: false,
       status: 'unsupported',
+      isBlocked: false,
       message: '当前浏览器不支持系统通知 API，建议在手机“添加到桌面”或使用 Chrome / Edge 访问',
     };
   }
@@ -336,21 +340,97 @@ export async function requestLocalSystemPermission(): Promise<{
       return {
         granted: true,
         status: res,
+        isBlocked: false,
         message: '手机系统级通知权限已开启！',
       };
     } else {
       return {
         granted: false,
         status: res,
-        message: '通知权限未允许，请在浏览器或手机“设置 - 通知”中允许通知',
+        isBlocked: res === 'denied',
+        message: res === 'denied'
+          ? '通知权限已被浏览器拒绝/拦截，请在浏览器或手机设置中允许通知'
+          : '通知权限未完成允许',
       };
     }
   } catch (err: any) {
     return {
       granted: false,
       status: 'denied',
+      isBlocked: true,
       message: err?.message || '申请通知权限失败',
     };
+  }
+}
+
+export async function recheckNotificationPermission(): Promise<{
+  permission: NotificationPermission | 'unsupported';
+  isBlocked: boolean;
+  hasPushManager: boolean;
+  hasNotification: boolean;
+  message: string;
+}> {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return {
+      permission: 'unsupported',
+      isBlocked: false,
+      hasPushManager: false,
+      hasNotification: false,
+      message: '当前环境不支持 Notification API，建议将应用添加到主屏幕或使用 Chrome / Edge 打开',
+    };
+  }
+
+  const perm = Notification.permission;
+  const hasPushManager = 'serviceWorker' in navigator && 'PushManager' in window;
+
+  if (perm === 'granted') {
+    return {
+      permission: 'granted',
+      isBlocked: false,
+      hasPushManager,
+      hasNotification: true,
+      message: '通知权限检测正常：已授权允许！可正常接收系统通知。',
+    };
+  } else if (perm === 'denied') {
+    return {
+      permission: 'denied',
+      isBlocked: true,
+      hasPushManager,
+      hasNotification: true,
+      message: '检测结果：当前仍处于【被拒绝/拦截】状态。请按上方指引修改为“允许”后再次点击检测。',
+    };
+  } else {
+    // 'default' - try requesting actively
+    try {
+      const newPerm = await Notification.requestPermission();
+      if (newPerm === 'granted') {
+        return {
+          permission: 'granted',
+          isBlocked: false,
+          hasPushManager,
+          hasNotification: true,
+          message: '已成功授权开启系统通知！',
+        };
+      } else {
+        return {
+          permission: newPerm,
+          isBlocked: newPerm === 'denied',
+          hasPushManager,
+          hasNotification: true,
+          message: newPerm === 'denied'
+            ? '权限已被拒绝，请按指引在浏览器设置中开启'
+            : '尚未完成授权，请在弹窗中允许通知',
+        };
+      }
+    } catch {
+      return {
+        permission: perm,
+        isBlocked: false,
+        hasPushManager,
+        hasNotification: true,
+        message: '待授权状态，请在浏览器地址栏允许通知',
+      };
+    }
   }
 }
 

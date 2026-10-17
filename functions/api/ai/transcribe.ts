@@ -27,7 +27,15 @@ export const onRequestPost = async (context: any) => {
     }
 
     const cleanBase64 = String(audio).replace(/^data:[^;]+;base64,/, '').trim();
-    const cleanMimeType = mimeType || 'audio/webm';
+    let cleanMimeType = String(mimeType || 'audio/webm').split(';')[0].trim().toLowerCase();
+    if (cleanMimeType === 'audio/x-m4a' || cleanMimeType === 'audio/m4a') {
+      cleanMimeType = 'audio/mp4';
+    }
+    const supportedAudioTypes = ['audio/webm', 'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/wav', 'audio/mp3', 'audio/flac', 'audio/mpeg'];
+    if (!supportedAudioTypes.includes(cleanMimeType)) {
+      cleanMimeType = cleanMimeType.includes('mp4') || cleanMimeType.includes('aac') || cleanMimeType.includes('m4a') ? 'audio/mp4' : 'audio/webm';
+    }
+
     const apiKey = env.GEMINI_API_KEY || env.GOOGLE_API_KEY || (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : '');
 
     if (!apiKey) {
@@ -43,28 +51,40 @@ export const onRequestPost = async (context: any) => {
 
     const promptText = prompt || '请准确转录这段语音音频内容，输出中文或英文原话纯文本。如果是课程作业，请保留课程名、作业内容与截止时间。直接输出纯文本，不要包含多余解说。';
 
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-transcribe:generateContent?key=${apiKey}`;
-    const response = await fetch(apiUrl, {
+    const buildPayload = () => ({
+      contents: [
+        {
+          parts: [
+            {
+              inline_data: {
+                mime_type: cleanMimeType,
+                data: cleanBase64,
+              },
+            },
+            {
+              text: promptText,
+            },
+          ],
+        },
+      ],
+    });
+
+    let apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-transcribe:generateContent?key=${apiKey}`;
+    let response = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                inline_data: {
-                  mime_type: cleanMimeType,
-                  data: cleanBase64,
-                },
-              },
-              {
-                text: promptText,
-              },
-            ],
-          },
-        ],
-      }),
+      body: JSON.stringify(buildPayload()),
     });
+
+    if (!response.ok) {
+      console.warn('gemini-3.5-transcribe failed, retrying with gemini-3.8-flash on Cloudflare Pages');
+      apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
+      response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildPayload()),
+      });
+    }
 
     if (!response.ok) {
       const errText = await response.text();

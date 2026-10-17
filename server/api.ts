@@ -1176,7 +1176,14 @@ apiRouter.post('/ai/transcribe', async (req: Request, res: Response) => {
     }
 
     const cleanBase64 = String(audio).replace(/^data:[^;]+;base64,/, '').trim();
-    const cleanMimeType = mimeType || 'audio/webm';
+    let cleanMimeType = String(mimeType || 'audio/webm').split(';')[0].trim().toLowerCase();
+    if (cleanMimeType === 'audio/x-m4a' || cleanMimeType === 'audio/m4a') {
+      cleanMimeType = 'audio/mp4';
+    }
+    const supportedAudioTypes = ['audio/webm', 'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/wav', 'audio/mp3', 'audio/flac', 'audio/mpeg'];
+    if (!supportedAudioTypes.includes(cleanMimeType)) {
+      cleanMimeType = cleanMimeType.includes('mp4') || cleanMimeType.includes('aac') || cleanMimeType.includes('m4a') ? 'audio/mp4' : 'audio/webm';
+    }
 
     const ai = getGeminiClient();
     const audioPart = {
@@ -1188,17 +1195,32 @@ apiRouter.post('/ai/transcribe', async (req: Request, res: Response) => {
 
     const promptText = prompt || '请原样准确转录这段语音音频内容，输出中文或英文原话纯文本。不要添加任何多余解说、前缀、标号或特殊排版。如果是布置或记录作业/待办，完整保留课程名、作业内容和截止时间。';
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.5-transcribe',
-      contents: {
-        parts: [
-          audioPart,
-          { text: promptText },
-        ],
-      },
-    });
+    let text = '';
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.5-transcribe',
+        contents: {
+          parts: [
+            audioPart,
+            { text: promptText },
+          ],
+        },
+      });
+      text = response.text ? response.text.trim() : '';
+    } catch (primaryErr: any) {
+      console.warn('gemini-3.5-transcribe error, falling back to gemini-3.8-flash:', primaryErr?.message);
+      const fallbackResponse = await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: {
+          parts: [
+            audioPart,
+            { text: promptText },
+          ],
+        },
+      });
+      text = fallbackResponse.text ? fallbackResponse.text.trim() : '';
+    }
 
-    const text = response.text ? response.text.trim() : '';
     return res.json({ text, success: true });
   } catch (err: any) {
     console.error('Gemini audio transcription error:', err);
