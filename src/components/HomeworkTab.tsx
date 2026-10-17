@@ -255,20 +255,21 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
       } catch (e) {}
     }
 
-    const currentItem = homework.find(h => Number(h.id) === Number(id));
+    const numericId = Number(id);
+    const currentItem = homework.find(h => Number(h.id) === numericId);
     if (!currentItem) return;
-    const currentDone = optimisticToggles[id] !== undefined ? optimisticToggles[id] : currentItem.done;
+    const currentDone = optimisticToggles[numericId] !== undefined ? optimisticToggles[numericId] : currentItem.done;
     const nextDone = !currentDone;
 
     // 1. Instant local optimistic update (0ms UI feedback)
-    setOptimisticToggles(prev => ({ ...prev, [id]: nextDone }));
+    setOptimisticToggles(prev => ({ ...prev, [numericId]: nextDone }));
 
     // 2. Trigger parent toggle
-    onToggle(id).catch(() => {
+    onToggle(numericId).catch(() => {
       // Revert if error
       setOptimisticToggles(prev => {
         const next = { ...prev };
-        delete next[id];
+        delete next[numericId];
         return next;
       });
       toast('更新作业状态失败，请重试');
@@ -296,7 +297,8 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
 
   const effectiveHomework = useMemo(() => {
     return homework.map(h => {
-      const override = optimisticToggles[h.id];
+      const hId = Number(h.id);
+      const override = optimisticToggles[hId] !== undefined ? optimisticToggles[hId] : optimisticToggles[h.id];
       return override !== undefined ? { ...h, done: override } : h;
     });
   }, [homework, optimisticToggles]);

@@ -437,15 +437,30 @@ export default function App() {
       prev.map(h => (Number(h.id) === Number(id) ? { ...h, done: willBeDone } : h))
     );
 
-    // 2. Bidirectional sync: when homework marked as completed, check matching uncompleted task
+    // 2. Bidirectional sync: when homework marked as completed, check matching uncompleted task with platform prefix compatibility
     const hwFormattedTitle = `[${targetHw.course}] ${targetHw.title}`.trim();
+    const cleanHwTitle = targetHw.title
+      .replace(/^\[.*?\]\s*/, '')
+      .replace(/^(PTA|课堂派|超星学习通|学习通|明理云盘|云盘)[\s:：-]*/i, '')
+      .trim();
+
     const matchedTask = willBeDone
-      ? tasks.find(t =>
-          !t.done && (
-            t.title.trim() === hwFormattedTitle ||
-            t.title.trim() === targetHw.title.trim()
-          )
-        )
+      ? tasks.find(t => {
+          if (t.done) return false;
+          const tTrim = t.title.trim();
+          const cleanTaskTitle = tTrim
+            .replace(/^\[.*?\]\s*/, '')
+            .replace(/^(PTA|课堂派|超星学习通|学习通|明理云盘|云盘)[\s:：-]*/i, '')
+            .trim();
+          return (
+            tTrim === hwFormattedTitle ||
+            tTrim === targetHw.title.trim() ||
+            tTrim === cleanHwTitle ||
+            cleanTaskTitle === cleanHwTitle ||
+            tTrim.includes(targetHw.title.trim()) ||
+            targetHw.title.trim().includes(cleanTaskTitle)
+          );
+        })
       : null;
 
     if (matchedTask) {
@@ -478,7 +493,7 @@ export default function App() {
         setHomework(prev =>
           prev.map(h => (Number(h.id) === Number(id) ? { ...h, done: targetHw.done } : h))
         );
-        showToast('更新作业状态失败，请重试');
+        showToast('更新状态失败，请重试');
       }
     }
   };
@@ -532,14 +547,30 @@ export default function App() {
       prev.map(t => (Number(t.id) === Number(id) ? { ...t, done: willBeDone } : t))
     );
 
-    // 2. Bidirectional sync: when task marked as completed, check matching uncompleted homework
+    // 2. Bidirectional sync: when task marked as completed, check matching uncompleted homework with platform prefix compatibility
+    const targetTitle = target.title.trim();
+    const cleanTargetTitle = targetTitle
+      .replace(/^\[.*?\]\s*/, '')
+      .replace(/^(PTA|课堂派|超星学习通|学习通|明理云盘|云盘)[\s:：-]*/i, '')
+      .trim();
+
     const matchedHw = willBeDone
-      ? homework.find(h =>
-          !h.done && (
-            `[${h.course}] ${h.title}`.trim() === target.title.trim() ||
-            h.title.trim() === target.title.trim()
-          )
-        )
+      ? homework.find(h => {
+          if (h.done) return false;
+          const hFormatted = `[${h.course}] ${h.title}`.trim();
+          const hTitle = h.title.trim();
+          const cleanHwTitle = hTitle
+            .replace(/^\[.*?\]\s*/, '')
+            .replace(/^(PTA|课堂派|超星学习通|学习通|明理云盘|云盘)[\s:：-]*/i, '')
+            .trim();
+          return (
+            hFormatted === targetTitle ||
+            hTitle === targetTitle ||
+            cleanHwTitle === cleanTargetTitle ||
+            targetTitle.includes(hTitle) ||
+            hTitle.includes(cleanTargetTitle)
+          );
+        })
       : null;
 
     if (matchedHw) {

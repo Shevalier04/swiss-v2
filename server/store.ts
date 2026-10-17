@@ -304,7 +304,7 @@ class Store {
 
   toggleHomework(username: string, id: number): Homework {
     const list = this.getHomework(username);
-    const target = list.find(h => h.id === id);
+    const target = list.find(h => Number(h.id) === Number(id));
     if (!target) throw new Error('作业未找到');
     target.done = !target.done;
     this.saveHomework(username, list);
@@ -313,7 +313,7 @@ class Store {
 
   updateHomework(username: string, id: number, updates: { course?: string; title?: string; due?: string; done?: boolean }): Homework {
     const list = this.getHomework(username);
-    const target = list.find(h => h.id === id);
+    const target = list.find(h => Number(h.id) === Number(id));
     if (!target) throw new Error('作业未找到');
     if (updates.course !== undefined) target.course = updates.course;
     if (updates.title !== undefined) target.title = updates.title;
