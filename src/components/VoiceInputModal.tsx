@@ -37,6 +37,14 @@ export interface VoiceInputModalProps {
   mode: 'homework' | 'task';
   courseNames?: string[];
   /**
+   * Optional ref to parent text input element for focusing on network error fallback
+   */
+  targetInputRef?: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
+  /**
+   * Callback to focus target text input in parent component
+   */
+  onFocusTargetInput?: () => void;
+  /**
    * Called when user confirms filling text into the input field
    */
   onConfirmText: (text: string) => void;
@@ -52,12 +60,15 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
   onClose,
   mode,
   courseNames = [],
+  targetInputRef,
+  onFocusTargetInput,
   onConfirmText,
   onDirectAdd,
   toast,
 }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isSimulating, setIsSimulating] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [recognizedText, setRecognizedText] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -68,6 +79,9 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
   const [isRequestingPerm, setIsRequestingPerm] = useState(false);
   const [showDoctorModal, setShowDoctorModal] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
+  const [networkErrorOccurred, setNetworkErrorOccurred] = useState(false);
+
+  const modalInputRef = useRef<HTMLTextAreaElement>(null);
 
   const handleCopyUrl = () => {
     if (typeof window === 'undefined') return;
@@ -93,6 +107,21 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const volAnimRef = useRef<number | null>(null);
   const maxVolumeRef = useRef<number>(0);
+
+  // Focus parent target input or local textarea
+  const triggerFocusInput = useCallback(() => {
+    if (onFocusTargetInput) {
+      onFocusTargetInput();
+    } else if (targetInputRef && targetInputRef.current) {
+      try {
+        targetInputRef.current.focus();
+      } catch (e) {}
+    } else if (modalInputRef.current) {
+      try {
+        modalInputRef.current.focus();
+      } catch (e) {}
+    }
+  }, [onFocusTargetInput, targetInputRef]);
 
   // Parse result for homework mode
   const parsedPreview = useMemo(() => {
@@ -133,6 +162,7 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
       setErrorMsg(null);
       setRecordSeconds(0);
       setShowMobileHelp(false);
+      setNetworkErrorOccurred(false);
     }
   }, [isOpen, cleanupRecording]);
 
@@ -163,6 +193,151 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
     }
   };
 
+  // Trigger simulated voice recognition demo for presentation / defense
+  const handleSimulateVoiceDemo = (customText?: string) => {
+    setIsSimulating(true);
+    setErrorMsg(null);
+    const demoOptions =
+      mode === 'homework'
+        ? [
+            '高数 课后习题P32第1题 @明天',
+            '界面设计 交互原型实验报告 @下周三',
+            '大学英语 Unit 3 词汇背诵 @周五',
+            '计算机网络 Wireshark 抓包实验总结 @周日',
+          ]
+        : [
+            '下午两点准时参加学院线上答辩演示',
+            '整理本周各科课堂笔记并上传作业库',
+            '去图书馆借阅操作系统第三版参考书',
+            '找辅导员盖社会实践证明印章',
+          ];
+
+    const targetText =
+      customText || demoOptions[Math.floor(Math.random() * demoOptions.length)];
+
+    toast('正在启动模拟语音识别演示 (答辩保底模式)...');
+
+    // Simulate typing effect
+    let currentLen = 0;
+    const interval = setInterval(() => {
+      currentLen += 1;
+      setRecognizedText(targetText.slice(0, currentLen));
+      if (currentLen >= targetText.length) {
+        clearInterval(interval);
+        setIsSimulating(false);
+        toast('【模拟语音识别演示完成】！要素已智能解析');
+      }
+    }, 40);
+  };
+
+  // Attempt local browser native SpeechRecognition with mic permission check and network fallback
+  const tryLocalSpeechRecognition = useCallback((): Promise<string | null> => {
+    return new Promise(async resolve => {
+      if (typeof window === 'undefined') {
+        resolve(null);
+        return;
+      }
+
+      // Step 1: Pre-check microphone permission before starting SpeechRecognition
+      try {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          micStream.getTracks().forEach(track => track.stop());
+          setPermissionState('granted');
+        }
+      } catch (micErr: any) {
+        console.warn('Microphone permission check failed prior to SpeechRecognition:', micErr);
+        setPermissionState('denied');
+        setErrorMsg('麦克风权限未开放，请在手机浏览器设置中放行麦克风');
+        setShowMobileHelp(true);
+        resolve(null);
+        return;
+      }
+
+      // Step 2: Check Web Speech API availability
+      const SpeechClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechClass) {
+        console.warn('Native SpeechRecognition API unavailable on this browser kernel.');
+        const fallbackMsg =
+          '当前浏览器内置语音服务受网络限制，已为您唤起输入框，请直接点击【手机键盘右上角的麦克风】进行语音输入';
+        setErrorMsg(fallbackMsg);
+        toast(fallbackMsg);
+        setNetworkErrorOccurred(true);
+        triggerFocusInput();
+        resolve(null);
+        return;
+      }
+
+      // Step 3: Instantiate and handle errors
+      try {
+        const recognition = new SpeechClass();
+        recognition.lang = 'zh-CN';
+        recognition.continuous = false;
+        recognition.interimResults = true;
+
+        let resultText = '';
+        const startTime = Date.now();
+
+        recognition.onresult = (event: any) => {
+          let interim = '';
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              resultText += event.results[i][0].transcript;
+            } else {
+              interim += event.results[i][0].transcript;
+            }
+          }
+          const current = resultText || interim;
+          if (current) {
+            setRecognizedText(current);
+          }
+        };
+
+        recognition.onerror = (event: any) => {
+          const errCode = event.error || 'unknown';
+          const elapsed = Date.now() - startTime;
+          console.warn(`Local webkitSpeechRecognition error [${errCode}] after ${elapsed}ms:`, event);
+
+          if (
+            errCode === 'network' ||
+            errCode === 'service-not-allowed' ||
+            errCode === 'not-allowed' ||
+            elapsed < 4000
+          ) {
+            setNetworkErrorOccurred(true);
+            const friendlyPrompt =
+              '当前浏览器内置语音服务受网络限制，已为您唤起输入框，请直接点击【手机键盘右上角的麦克风】进行语音输入';
+            setErrorMsg(friendlyPrompt);
+            toast(friendlyPrompt);
+            triggerFocusInput();
+          } else if (errCode === 'no-speech') {
+            setErrorMsg('未感应到明显发音，请靠近手机麦克风重新说话或使用下方的模拟演示');
+          } else {
+            setErrorMsg(`语音识别错误 (${errCode})，已为您切换为手机键盘语音输入`);
+            triggerFocusInput();
+          }
+
+          resolve(resultText ? resultText.trim() : null);
+        };
+
+        recognition.onend = () => {
+          resolve(resultText ? resultText.trim() : null);
+        };
+
+        recognition.start();
+      } catch (err: any) {
+        console.warn('Failed to start local SpeechRecognition:', err);
+        const fallbackMsg =
+          '当前浏览器内置语音服务受网络限制，已为您唤起输入框，请直接点击【手机键盘右上角的麦克风】进行语音输入';
+        setErrorMsg(fallbackMsg);
+        toast(fallbackMsg);
+        setNetworkErrorOccurred(true);
+        triggerFocusInput();
+        resolve(null);
+      }
+    });
+  }, [triggerFocusInput, toast]);
+
   // Start recording using universal 16kHz WAV recorder
   const startRecording = async () => {
     setErrorMsg(null);
@@ -170,6 +345,7 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
     setRecordSeconds(0);
     maxVolumeRef.current = 0;
     setAudioLevel(0);
+    setNetworkErrorOccurred(false);
 
     if (typeof window === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setErrorMsg(
@@ -232,58 +408,7 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
     }
   };
 
-  // Attempt local browser native SpeechRecognition fallback
-  const tryLocalSpeechRecognition = useCallback((): Promise<string | null> => {
-    return new Promise(resolve => {
-      if (typeof window === 'undefined') {
-        resolve(null);
-        return;
-      }
-      const SpeechClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (!SpeechClass) {
-        resolve(null);
-        return;
-      }
 
-      try {
-        const recognition = new SpeechClass();
-        recognition.lang = 'zh-CN';
-        recognition.continuous = false;
-        recognition.interimResults = true;
-
-        let resultText = '';
-
-        recognition.onresult = (event: any) => {
-          let interim = '';
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-              resultText += event.results[i][0].transcript;
-            } else {
-              interim += event.results[i][0].transcript;
-            }
-          }
-          const current = resultText || interim;
-          if (current) {
-            setRecognizedText(current);
-          }
-        };
-
-        recognition.onerror = (err: any) => {
-          console.warn('Local webkitSpeechRecognition error:', err);
-          resolve(resultText ? resultText.trim() : null);
-        };
-
-        recognition.onend = () => {
-          resolve(resultText ? resultText.trim() : null);
-        };
-
-        recognition.start();
-      } catch (err) {
-        console.warn('Failed to start local SpeechRecognition:', err);
-        resolve(null);
-      }
-    });
-  }, []);
 
   // Stop recording and send 16kHz WAV to Cloud Dual-Engine (or Local Native Fallback)
   const stopRecording = async () => {
@@ -629,20 +754,33 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
                 <div className="flex flex-wrap items-center gap-2 pt-0.5">
                   <button
                     type="button"
-                    onClick={() => setShowDoctorModal(true)}
-                    className="px-2.5 py-1 bg-[#6b7cff]/20 hover:bg-[#6b7cff]/30 border border-[#6b7cff]/50 text-[#8ea4ff] hover:text-white rounded text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                    onClick={() => {
+                      onClose();
+                      triggerFocusInput();
+                      toast('已为您唤起输入框！点击【手机键盘右上角的麦克风】即可离线语音输入。');
+                    }}
+                    className="px-2.5 py-1 bg-[#4ade80]/20 hover:bg-[#4ade80]/30 border border-[#4ade80]/50 text-[#4ade80] rounded text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
                   >
-                    <Globe className="w-3 h-3 text-[#6b7cff]" />
-                    <span>打开浏览器全项检测与设置指引</span>
+                    <Smartphone className="w-3 h-3 text-[#4ade80]" />
+                    <span>唤起输入框键盘麦克风</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={handleCopyUrl}
-                    className="px-2.5 py-1 bg-[#242732] hover:bg-[#323646] border border-[#3e4254] text-[#e9e4d8] rounded text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                    onClick={() => handleSimulateVoiceDemo()}
+                    className="px-2.5 py-1 bg-[#d99a2b]/20 hover:bg-[#d99a2b]/30 border border-[#d99a2b]/50 text-[#f5bf5b] rounded text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
                   >
-                    <Copy className="w-3 h-3 text-[#a8a399]" />
-                    <span>{copiedUrl ? '已复制网址！' : '一键复制网址切换自带浏览器'}</span>
+                    <Sparkles className="w-3 h-3 text-[#d99a2b]" />
+                    <span>⚡ 模拟语音识别演示 (答辩保底)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowDoctorModal(true)}
+                    className="px-2.5 py-1 bg-[#6b7cff]/20 hover:bg-[#6b7cff]/30 border border-[#6b7cff]/50 text-[#8ea4ff] hover:text-white rounded text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Globe className="w-3 h-3 text-[#6b7cff]" />
+                    <span>打开浏览器全项检测</span>
                   </button>
 
                   <button
@@ -653,6 +791,39 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
                     {showMobileHelp ? '收起排查' : '常见排查指引'}
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Network Error or Defense Demo Banner */}
+          {(networkErrorOccurred || isSimulating) && (
+            <div className="p-3 bg-[#d99a2b]/15 border border-[#d99a2b]/40 rounded-lg space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-[#f5bf5b] font-bold text-xs">
+                  <Sparkles className="w-4 h-4 text-[#d99a2b]" />
+                  <span>已开启【答辩演示保底 / 模拟语音识别模式】</span>
+                </div>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#d99a2b]/30 text-[#f5bf5b] font-mono font-bold">
+                  DEFENSE READY
+                </span>
+              </div>
+              <p className="text-[11px] text-[#a8a399] leading-relaxed">
+                针对国内网络下浏览器原生 `webkitSpeechRecognition` 的 network 限制，点击下方快捷模拟演示按钮，即可生成符合语法要素的完整文本，防尴尬冷场！
+              </p>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {(mode === 'homework'
+                  ? ['高数 课后习题P32 @明天', '界面设计 实验报告下周三前交', '计算机网络 抓包实验 @周日']
+                  : ['下午两点准时参加学院线上答辩', '去图书馆借阅操作系统第三版参考书']
+                ).map((demoText, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleSimulateVoiceDemo(demoText)}
+                    className="px-2 py-1 text-[11px] font-bold rounded bg-[#272216] border border-[#d99a2b]/50 text-[#f5bf5b] hover:bg-[#d99a2b] hover:text-[#16181d] transition-all cursor-pointer shadow-xs active:scale-95"
+                  >
+                    ⚡ {demoText}
+                  </button>
+                ))}
               </div>
             </div>
           )}
@@ -702,15 +873,18 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
             </div>
 
             <textarea
+              ref={modalInputRef}
               value={recognizedText}
               onChange={e => setRecognizedText(e.target.value)}
               placeholder={
                 isRecording
                   ? '正在录音收音中，说完点击“说完了，结束录音”...'
+                  : isSimulating
+                  ? '正在模拟语音录入与智能要素识别中...'
                   : '语音转录内容将在此显示，您可以随时直接在此输入或修改'
               }
               rows={3}
-              className="w-full bg-[#16181d] border border-[#33363d] focus:border-[#6b7cff] rounded-lg p-2.5 text-xs sm:text-sm text-[#e9e4d8] outline-none placeholder:text-[#63605a] custom-scrollbar font-sans"
+              className="w-full bg-[#16181d] border border-[#33363d] focus:border-[#6b7cff] rounded-lg p-2.5 text-xs sm:text-sm text-[#e9e4d8] outline-none placeholder:text-[#63605a] custom-scrollbar font-sans font-medium"
             />
           </div>
 

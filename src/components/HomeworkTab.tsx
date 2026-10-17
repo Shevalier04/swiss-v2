@@ -55,6 +55,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
   const [filter, setFilter] = useState<'all' | 'todo' | 'done'>('all');
 
   // Single-line quick input state
+  const quickInputRef = React.useRef<HTMLInputElement>(null);
   const [quickText, setQuickText] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -310,6 +311,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
         <form onSubmit={handleQuickAdd} className="flex gap-2 items-center">
           <div className="relative flex-1">
             <input
+              ref={quickInputRef}
               type="text"
               value={quickText}
               onChange={e => setQuickText(e.target.value)}
@@ -745,6 +747,12 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
           onClose={() => setShowVoiceModal(false)}
           mode="homework"
           courseNames={courseNames}
+          targetInputRef={quickInputRef}
+          onFocusTargetInput={() => {
+            if (quickInputRef.current) {
+              quickInputRef.current.focus();
+            }
+          }}
           onConfirmText={text => {
             setQuickText(text);
           }}

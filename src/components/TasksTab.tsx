@@ -33,6 +33,7 @@ export const TasksTab: React.FC<TasksTabProps> = ({
   toast,
 }) => {
   const [filter, setFilter] = useState<'all' | 'todo' | 'done'>('all');
+  const taskInputRef = React.useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -205,6 +206,7 @@ export const TasksTab: React.FC<TasksTabProps> = ({
       {/* Add Form */}
       <form onSubmit={handleAdd} className="bg-[#24262c] p-3 border border-[#33363d] rounded flex gap-2 items-center">
         <input
+          ref={taskInputRef}
           type="text"
           value={title}
           onChange={e => setTitle(e.target.value)}
@@ -399,6 +401,12 @@ export const TasksTab: React.FC<TasksTabProps> = ({
           isOpen={showVoiceModal}
           onClose={() => setShowVoiceModal(false)}
           mode="task"
+          targetInputRef={taskInputRef}
+          onFocusTargetInput={() => {
+            if (taskInputRef.current) {
+              taskInputRef.current.focus();
+            }
+          }}
           onConfirmText={text => {
             setTitle(text);
           }}
