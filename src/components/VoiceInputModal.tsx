@@ -230,31 +230,30 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
     }, 40);
   };
 
-  // Attempt local browser native SpeechRecognition with mic permission check and network fallback
+  const speechRecRef = useRef<any>(null);
+  const fuseTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Attempt local browser native SpeechRecognition with 2.5s fuse timeout and zero getUserMedia precheck
   const tryLocalSpeechRecognition = useCallback((): Promise<string | null> => {
-    return new Promise(async resolve => {
+    return new Promise(resolve => {
       if (typeof window === 'undefined') {
         resolve(null);
         return;
       }
 
-      // Step 1: Pre-check microphone permission before starting SpeechRecognition
-      try {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          micStream.getTracks().forEach(track => track.stop());
-          setPermissionState('granted');
-        }
-      } catch (micErr: any) {
-        console.warn('Microphone permission check failed prior to SpeechRecognition:', micErr);
-        setPermissionState('denied');
-        setErrorMsg('麦克风权限未开放，请在手机浏览器设置中放行麦克风');
-        setShowMobileHelp(true);
-        resolve(null);
-        return;
+      // If already listening, abort immediately to prevent deadlocks
+      if (speechRecRef.current) {
+        try {
+          speechRecRef.current.abort();
+        } catch {}
+        speechRecRef.current = null;
+      }
+      if (fuseTimerRef.current) {
+        clearTimeout(fuseTimerRef.current);
+        fuseTimerRef.current = null;
       }
 
-      // Step 2: Check Web Speech API availability
+      // Check Web Speech API availability
       const SpeechClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (!SpeechClass) {
         console.warn('Native SpeechRecognition API unavailable on this browser kernel.');
@@ -268,17 +267,40 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
         return;
       }
 
-      // Step 3: Instantiate and handle errors
       try {
         const recognition = new SpeechClass();
+        speechRecRef.current = recognition;
         recognition.lang = 'zh-CN';
         recognition.continuous = false;
         recognition.interimResults = true;
 
         let resultText = '';
-        const startTime = Date.now();
+        let hasReceivedResult = false;
+
+        // 2.5s Timeout Fuse to avoid main thread freeze on Android/GMS disconnect
+        fuseTimerRef.current = setTimeout(() => {
+          if (!hasReceivedResult) {
+            console.warn('SpeechRecognition 2.5s timeout fuse triggered. Forcing abort.');
+            try {
+              recognition.abort();
+            } catch {}
+            speechRecRef.current = null;
+            setNetworkErrorOccurred(true);
+            const promptMsg =
+              '当前浏览器内置语音服务受网络限制，已为您唤起输入框，请直接点击【手机键盘右上角的麦克风】进行语音输入';
+            setErrorMsg(promptMsg);
+            toast(promptMsg);
+            triggerFocusInput();
+            resolve(null);
+          }
+        }, 2500);
 
         recognition.onresult = (event: any) => {
+          hasReceivedResult = true;
+          if (fuseTimerRef.current) {
+            clearTimeout(fuseTimerRef.current);
+            fuseTimerRef.current = null;
+          }
           let interim = '';
           for (let i = event.resultIndex; i < event.results.length; ++i) {
             if (event.results[i].isFinal) {
@@ -294,38 +316,40 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
         };
 
         recognition.onerror = (event: any) => {
-          const errCode = event.error || 'unknown';
-          const elapsed = Date.now() - startTime;
-          console.warn(`Local webkitSpeechRecognition error [${errCode}] after ${elapsed}ms:`, event);
-
-          if (
-            errCode === 'network' ||
-            errCode === 'service-not-allowed' ||
-            errCode === 'not-allowed' ||
-            elapsed < 4000
-          ) {
-            setNetworkErrorOccurred(true);
-            const friendlyPrompt =
-              '当前浏览器内置语音服务受网络限制，已为您唤起输入框，请直接点击【手机键盘右上角的麦克风】进行语音输入';
-            setErrorMsg(friendlyPrompt);
-            toast(friendlyPrompt);
-            triggerFocusInput();
-          } else if (errCode === 'no-speech') {
-            setErrorMsg('未感应到明显发音，请靠近手机麦克风重新说话或使用下方的模拟演示');
-          } else {
-            setErrorMsg(`语音识别错误 (${errCode})，已为您切换为手机键盘语音输入`);
-            triggerFocusInput();
+          if (fuseTimerRef.current) {
+            clearTimeout(fuseTimerRef.current);
+            fuseTimerRef.current = null;
           }
+          speechRecRef.current = null;
+          const errCode = event.error || 'unknown';
+          console.warn(`Local webkitSpeechRecognition error [${errCode}]:`, event);
+
+          setNetworkErrorOccurred(true);
+          const friendlyPrompt =
+            '当前浏览器内置语音服务受网络限制，已为您唤起输入框，请直接点击【手机键盘右上角的麦克风】进行语音输入';
+          setErrorMsg(friendlyPrompt);
+          toast(friendlyPrompt);
+          triggerFocusInput();
 
           resolve(resultText ? resultText.trim() : null);
         };
 
         recognition.onend = () => {
+          if (fuseTimerRef.current) {
+            clearTimeout(fuseTimerRef.current);
+            fuseTimerRef.current = null;
+          }
+          speechRecRef.current = null;
           resolve(resultText ? resultText.trim() : null);
         };
 
         recognition.start();
       } catch (err: any) {
+        if (fuseTimerRef.current) {
+          clearTimeout(fuseTimerRef.current);
+          fuseTimerRef.current = null;
+        }
+        speechRecRef.current = null;
         console.warn('Failed to start local SpeechRecognition:', err);
         const fallbackMsg =
           '当前浏览器内置语音服务受网络限制，已为您唤起输入框，请直接点击【手机键盘右上角的麦克风】进行语音输入';

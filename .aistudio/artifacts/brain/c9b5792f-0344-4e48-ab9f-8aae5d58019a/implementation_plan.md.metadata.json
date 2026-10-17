@@ -1,6 +1,6 @@
 {
-  "summary": "Comprehensive refactoring plan for Web Push, PushManager FCM fallback to Service Worker System Notification Mode, and 5-second background lockscreen test notifications.",
-  "updatedAt": "2026-10-17T11:52:03.201819334Z",
+  "summary": "Implementation plan for preventing browser main thread freeze on speech recognition with 2.5s timeout fuse, strict single-execution ref lifecycle, and interactive quick-fill speech demo bubble panel.",
+  "updatedAt": "2026-10-17T12:25:04.721228160Z",
   "requestFeedback": true,
   "userFacing": true
 }

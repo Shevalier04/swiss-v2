@@ -59,6 +59,138 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
   const [quickText, setQuickText] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Anti-freeze Voice Recognition State & Fuse Ref
+  const [isListening, setIsListening] = useState(false);
+  const [showVoiceBubble, setShowVoiceBubble] = useState(false);
+  const [isSimulatingVoice, setIsSimulatingVoice] = useState(false);
+  const voiceRecRef = React.useRef<any>(null);
+  const voiceFuseTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  // Handle Voice Click with 2.5s Fuse Timeout & Zero getUserMedia Conflict
+  const handleTriggerVoice = () => {
+    // If currently listening, abort immediately (toggle off)
+    if (isListening || voiceRecRef.current) {
+      if (voiceRecRef.current) {
+        try {
+          voiceRecRef.current.abort();
+        } catch (e) {}
+        voiceRecRef.current = null;
+      }
+      if (voiceFuseTimerRef.current) {
+        clearTimeout(voiceFuseTimerRef.current);
+        voiceFuseTimerRef.current = null;
+      }
+      setIsListening(false);
+      toast('已停止语音录制');
+      return;
+    }
+
+    const SpeechClass =
+      typeof window !== 'undefined' &&
+      ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+
+    if (!SpeechClass) {
+      toast('当前浏览器内置语音服务受网络限制，已为您唤起输入框，请直接点击【手机键盘右上角的麦克风】进行语音输入');
+      if (quickInputRef.current) quickInputRef.current.focus();
+      setShowVoiceBubble(true);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechClass();
+      voiceRecRef.current = recognition;
+      recognition.lang = 'zh-CN';
+      recognition.continuous = false;
+      recognition.interimResults = true;
+
+      setIsListening(true);
+      toast('🎤 正在聆听中... 说话后自动识别');
+
+      let hasResult = false;
+
+      // 2.5s Fuse Timer
+      voiceFuseTimerRef.current = setTimeout(() => {
+        if (!hasResult) {
+          if (voiceRecRef.current) {
+            try {
+              voiceRecRef.current.abort();
+            } catch (e) {}
+            voiceRecRef.current = null;
+          }
+          setIsListening(false);
+          toast('当前浏览器内置语音服务受网络限制，已为您唤起输入框，请直接点击【手机键盘右上角的麦克风】进行语音输入');
+          if (quickInputRef.current) quickInputRef.current.focus();
+          setShowVoiceBubble(true);
+        }
+      }, 2500);
+
+      recognition.onresult = (e: any) => {
+        hasResult = true;
+        if (voiceFuseTimerRef.current) {
+          clearTimeout(voiceFuseTimerRef.current);
+          voiceFuseTimerRef.current = null;
+        }
+        setIsListening(false);
+        voiceRecRef.current = null;
+
+        let text = '';
+        for (let i = e.resultIndex; i < e.results.length; ++i) {
+          text += e.results[i][0].transcript;
+        }
+        if (text.trim()) {
+          setQuickText(text.trim());
+          toast('语音识别成功！已转为文本');
+        }
+      };
+
+      recognition.onerror = () => {
+        if (voiceFuseTimerRef.current) {
+          clearTimeout(voiceFuseTimerRef.current);
+          voiceFuseTimerRef.current = null;
+        }
+        setIsListening(false);
+        voiceRecRef.current = null;
+
+        toast('当前浏览器内置语音服务受网络限制，已为您唤起输入框，请直接点击【手机键盘右上角的麦克风】进行语音输入');
+        if (quickInputRef.current) quickInputRef.current.focus();
+        setShowVoiceBubble(true);
+      };
+
+      recognition.onend = () => {
+        if (voiceFuseTimerRef.current) {
+          clearTimeout(voiceFuseTimerRef.current);
+          voiceFuseTimerRef.current = null;
+        }
+        setIsListening(false);
+        voiceRecRef.current = null;
+      };
+
+      recognition.start();
+    } catch (err: any) {
+      if (voiceFuseTimerRef.current) {
+        clearTimeout(voiceFuseTimerRef.current);
+        voiceFuseTimerRef.current = null;
+      }
+      setIsListening(false);
+      voiceRecRef.current = null;
+
+      toast('当前浏览器内置语音服务受网络限制，已为您唤起输入框，请直接点击【手机键盘右上角的麦克风】进行语音输入');
+      if (quickInputRef.current) quickInputRef.current.focus();
+      setShowVoiceBubble(true);
+    }
+  };
+
+  const handleApplyVoicePreset = (presetText: string) => {
+    setIsSimulatingVoice(true);
+    toast('正在模拟识别声纹并智能提取要素...');
+    setTimeout(() => {
+      setIsSimulatingVoice(false);
+      setQuickText(presetText);
+      toast(`已成功识别填入：${presetText}`);
+      if (quickInputRef.current) quickInputRef.current.focus();
+    }, 800);
+  };
+
   // Modals state
   const [showSmartPasteModal, setShowSmartPasteModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -306,6 +438,53 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
         </div>
       </div>
 
+      {/* FLOATING VOICE QUICK DEMO BUBBLE PANEL */}
+      {showVoiceBubble && (
+        <div className="bg-[#1c1e24] border-2 border-[#d99a2b] rounded-lg p-3 text-xs shadow-xl animate-fade-in space-y-2.5 relative">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-[#f5bf5b] font-bold">
+              <Sparkles className="w-4 h-4 text-[#d99a2b]" />
+              <span>🎙️ 语音智能识别快捷演示面板（可点击直接填入）</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowVoiceBubble(false)}
+              className="text-[#8f8b80] hover:text-white text-xs cursor-pointer p-0.5"
+            >
+              ✕
+            </button>
+          </div>
+
+          <p className="text-[11px] text-[#a8a399] leading-relaxed">
+            国内安卓浏览器因 Google 语音服务网络限制已为您唤起输入框：您可直接点击【手机键盘右上角的麦克风】进行语音输入，或点击下方 3 个预设模拟识别：
+          </p>
+
+          {isSimulatingVoice ? (
+            <div className="flex items-center justify-center gap-2 py-2 text-[#d99a2b] font-bold font-mono">
+              <Loader2 className="w-4 h-4 animate-spin text-[#d99a2b]" />
+              <span>正在识别声纹与要素提取中 (0.8s)...</span>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row flex-wrap gap-1.5 pt-0.5">
+              {[
+                '明天下午两点在明理楼B302上数据库理论课',
+                '周五晚上十点前提交Java程序设计实验报告',
+                '下周三上午八点高等数学阶段测验',
+              ].map((preset, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleApplyVoicePreset(preset)}
+                  className="flex-1 text-left px-2.5 py-1.5 bg-[#252832] hover:bg-[#d99a2b] text-[#f5bf5b] hover:text-[#16181d] border border-[#d99a2b]/40 rounded text-[11.5px] font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+                >
+                  ⚡ {preset}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* TOP SINGLE-LINE ULTRA-FAST INPUT BOX */}
       <div className="bg-[#24262c] p-3 rounded border-2 border-[#e9e4d8] shadow-sm space-y-2">
         <form onSubmit={handleQuickAdd} className="flex gap-2 items-center">
@@ -333,9 +512,13 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
           {/* Voice Input Button directly next to input */}
           <button
             type="button"
-            onClick={() => setShowVoiceModal(true)}
-            className="p-2 bg-[#181a1f] hover:bg-[#ff6b57]/20 text-[#ff6b57] border border-[#3a3d46] hover:border-[#ff6b57] rounded transition-all cursor-pointer flex items-center justify-center shrink-0 active:scale-95"
-            title="麦克风语音输入作业 (Gemini 3.5 Transcribe)"
+            onClick={handleTriggerVoice}
+            className={`p-2 rounded transition-all cursor-pointer flex items-center justify-center shrink-0 active:scale-95 border ${
+              isListening
+                ? 'bg-red-500/20 text-red-400 border-red-500 animate-pulse'
+                : 'bg-[#181a1f] hover:bg-[#ff6b57]/20 text-[#ff6b57] border-[#3a3d46] hover:border-[#ff6b57]'
+            }`}
+            title={isListening ? '点击停止语音识别' : '开启极速语音录入 (带有 2.5s 防卡死熔断器)'}
           >
             <Mic className="w-4 h-4" />
           </button>
