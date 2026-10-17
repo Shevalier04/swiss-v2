@@ -296,11 +296,42 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
   }, [homework]);
 
   const effectiveHomework = useMemo(() => {
-    return homework.map(h => {
+    const raw = homework.map(h => {
       const hId = Number(h.id);
       const override = optimisticToggles[hId] !== undefined ? optimisticToggles[hId] : optimisticToggles[h.id];
       return override !== undefined ? { ...h, done: override } : h;
     });
+
+    const map = new Map<string, Homework>();
+    const getCleanTitle = (title: string) => {
+      return (title || '')
+        .replace(/^\[.*?\]\s*/, '')
+        .replace(/^(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)[\s:：-]*/i, '')
+        .trim()
+        .toLowerCase();
+    };
+
+    for (const h of raw) {
+      const courseKey = (h.course || '常规课程').trim().toLowerCase();
+      const cleanTitle = getCleanTitle(h.title);
+      const compositeKey = `${courseKey}__${cleanTitle}`;
+
+      if (!map.has(compositeKey)) {
+        map.set(compositeKey, { ...h });
+      } else {
+        const existing = map.get(compositeKey)!;
+        const isCurrentPrefixed = /^(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)[\s:：-]*/i.test(h.title.trim());
+        const isExistingPrefixed = /^(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)[\s:：-]*/i.test(existing.title.trim());
+
+        if (isExistingPrefixed && !isCurrentPrefixed) {
+          existing.title = h.title;
+        }
+        if (h.done) existing.done = true;
+        if (!existing.due && h.due) existing.due = h.due;
+      }
+    }
+
+    return Array.from(map.values());
   }, [homework, optimisticToggles]);
 
   // Get list of unique courses present in current homework list
