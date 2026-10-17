@@ -17,6 +17,11 @@ import {
   ChevronUp,
   FileText,
   Check,
+  Layers,
+  Filter,
+  BookOpen,
+  Grid,
+  List,
 } from 'lucide-react';
 import { HomeworkImportModal } from './HomeworkImportModal';
 import { SmartHomeworkPasteModal } from './SmartHomeworkPasteModal';
@@ -51,6 +56,15 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
   toast,
 }) => {
   const [filter, setFilter] = useState<'all' | 'todo' | 'done'>('all');
+
+  // Course Category & Grouping View States
+  const [selectedCourseFilter, setSelectedCourseFilter] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'grouped' | 'flat'>('grouped');
+  const [collapsedCourses, setCollapsedCourses] = useState<Record<string, boolean>>({});
+
+  const toggleCourseCollapse = (cName: string) => {
+    setCollapsedCourses(prev => ({ ...prev, [cName]: !prev[cName] }));
+  };
 
   // Single-line quick input state
   const quickInputRef = React.useRef<HTMLInputElement>(null);
@@ -229,13 +243,61 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
     });
   }, [homework, optimisticToggles]);
 
+  // Get list of unique courses present in current homework list
+  const availableCourses = useMemo(() => {
+    return Array.from(new Set(effectiveHomework.map(h => h.course || '常规课程').filter(Boolean)));
+  }, [effectiveHomework]);
+
+  // Homework count breakdown per course
+  const courseCounts = useMemo(() => {
+    const map: Record<string, { total: number; pending: number }> = {};
+    for (const h of effectiveHomework) {
+      const cName = h.course || '常规课程';
+      if (!map[cName]) {
+        map[cName] = { total: 0, pending: 0 };
+      }
+      map[cName].total += 1;
+      if (!h.done) map[cName].pending += 1;
+    }
+    return map;
+  }, [effectiveHomework]);
+
+  // Filtered list by status (all/todo/done) AND selected course category
   const filteredList = useMemo(() => {
     return effectiveHomework.filter(h => {
-      if (filter === 'todo') return !h.done;
-      if (filter === 'done') return h.done;
+      if (filter === 'todo' && h.done) return false;
+      if (filter === 'done' && !h.done) return false;
+      if (selectedCourseFilter !== 'all' && (h.course || '常规课程') !== selectedCourseFilter) return false;
       return true;
     });
-  }, [effectiveHomework, filter]);
+  }, [effectiveHomework, filter, selectedCourseFilter]);
+
+  // Grouped list by course
+  const groupedHomework = useMemo(() => {
+    const groups: { courseName: string; items: Homework[]; pendingCount: number }[] = [];
+    const courseMap = new Map<string, Homework[]>();
+
+    for (const h of filteredList) {
+      const cName = h.course || '常规课程';
+      if (!courseMap.has(cName)) {
+        courseMap.set(cName, []);
+      }
+      courseMap.get(cName)!.push(h);
+    }
+
+    for (const [courseName, items] of courseMap.entries()) {
+      const pendingCount = items.filter(it => !it.done).length;
+      groups.push({ courseName, items, pendingCount });
+    }
+
+    // Sort groups: courses with pending items first, then by course name
+    groups.sort((a, b) => {
+      if (b.pendingCount !== a.pendingCount) return b.pendingCount - a.pendingCount;
+      return a.courseName.localeCompare(b.courseName, 'zh-CN');
+    });
+
+    return groups;
+  }, [filteredList]);
 
   const pendingCount = useMemo(() => {
     return effectiveHomework.filter(h => !h.done).length;
@@ -501,205 +563,361 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
         )}
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex border-b-2 border-[#e9e4d8] text-xs font-semibold">
-        {(['all', 'todo', 'done'] as const).map(f => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`py-2 px-4 transition-colors relative cursor-pointer ${
-              filter === f ? 'text-[#e9e4d8] font-bold' : 'text-[#8f8b80]'
-            }`}
-          >
-            {f === 'all' ? '全部' : f === 'todo' ? '未完成' : '已完成'}
-            {filter === f && (
-              <span className="absolute left-2 right-2 -bottom-0.5 h-0.5 bg-[#6b7cff]" />
-            )}
-          </button>
-        ))}
-      </div>
+      {/* Helper function to render a single homework item row */}
+      {(() => {
+        const renderHomeworkRow = (item: Homework, idx: number) => {
+          const d = dueDays(item.due);
+          const isUrgent = !item.done && d <= 0;
+          const isSoon = !item.done && d > 0 && d <= 2;
+          const taskTitle = item.title ? `[${item.course}] ${item.title}` : `[${item.course}] 作业`;
+          const existingTask = (tasks || []).find(
+            t => !t.done && (t.title.trim() === taskTitle.trim() || (item.title && t.title.trim() === item.title.trim()))
+          );
 
-      {/* Homework List */}
-      {filteredList.length === 0 ? (
-        <div className="py-10 px-4 text-center bg-[#1e222c] border border-dashed border-[#6b7cff]/40 rounded space-y-2">
-          <div className="text-sm font-bold text-[#e9e4d8]">☁️ 云端数据库暂无待办作业</div>
-          <div className="text-xs text-[#8f8b80]">
-            {filter !== 'all' ? '当前筛选下无匹配作业' : '暂无作业记录。在上方输入框单行快速录入，或点击「智能粘贴导入」粘贴群消息'}
-          </div>
-          <div className="pt-2 flex justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowSmartPasteModal(true)}
-              className="px-3.5 py-1.5 bg-[#6b7cff] hover:bg-[#5868e6] text-white text-xs font-bold rounded cursor-pointer transition-colors flex items-center gap-1.5"
+          return (
+            <div
+              key={item.id}
+              className={`flex items-start gap-3 py-3 -mx-2 px-2.5 rounded transition-all duration-150 hover:bg-[#20222a]/70 group/row ${
+                item.done ? 'opacity-40' : ''
+              }`}
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>智能粘贴群消息</span>
-            </button>
-            {filter === 'all' && (
-              <button
-                type="button"
-                onClick={() => setShowImportModal(true)}
-                className="px-3.5 py-1.5 bg-[#252834] hover:bg-[#303444] border border-[#e9e4d8]/40 text-[#e9e4d8] text-xs font-bold rounded cursor-pointer transition-colors flex items-center gap-1.5"
-              >
-                <DownloadCloud className="w-3.5 h-3.5 text-[#6b7cff]" />
-                <span>同步官方作业清单</span>
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="divide-y divide-[#2a2d34]">
-          {filteredList.map((item, idx) => {
-            const d = dueDays(item.due);
-            const isUrgent = !item.done && d <= 0;
-            const isSoon = !item.done && d > 0 && d <= 2;
-            const taskTitle = item.title ? `[${item.course}] ${item.title}` : `[${item.course}] 作业`;
-            const existingTask = (tasks || []).find(
-              t => !t.done && (t.title.trim() === taskTitle.trim() || (item.title && t.title.trim() === item.title.trim()))
-            );
-
-            return (
+              {/* Left interactive trigger zone: Index + Enlarged Checkbox */}
               <div
-                key={item.id}
-                className={`flex items-start gap-3 py-3 -mx-2 px-2 rounded transition-all duration-150 hover:bg-[#20222a]/50 group/row ${
-                  item.done ? 'opacity-40' : ''
-                }`}
+                className="flex items-center gap-2 shrink-0 pt-0.5 cursor-pointer select-none touch-manipulation group/check"
+                onClick={() => handleToggleHomework(item.id)}
+                title={item.done ? '点击标记为未完成' : '点击标记为已完成'}
               >
-                {/* Left interactive trigger zone: Index + Enlarged Checkbox */}
-                <div
-                  className="flex items-center gap-2 shrink-0 pt-0.5 cursor-pointer select-none touch-manipulation group/check"
-                  onClick={() => handleToggleHomework(item.id)}
-                  title={item.done ? '点击标记为未完成' : '点击标记为已完成'}
-                >
-                  <span className="font-editorial italic text-xs text-[#63605a] group-hover/check:text-[#8f8b80] w-5 text-right transition-colors select-none">
-                    {pad2(idx + 1)}
-                  </span>
+                <span className="font-editorial italic text-xs text-[#63605a] group-hover/check:text-[#8f8b80] w-5 text-right transition-colors select-none">
+                  {pad2(idx + 1)}
+                </span>
 
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleToggleHomework(item.id);
-                    }}
-                    className="p-2 -m-2 flex items-center justify-center cursor-pointer touch-manipulation outline-none focus-visible:ring-2 focus-visible:ring-[#6b7cff] rounded"
-                    aria-label={item.done ? '标记为未完成' : '标记为已完成'}
-                    title={item.done ? '点击标记为未完成' : '点击标记为已完成'}
-                  >
-                    <span
-                      className={`w-5 h-5 rounded-[3px] border-2 flex items-center justify-center transition-all duration-150 active:scale-75 select-none ${
-                        item.done
-                          ? 'bg-[#e9e4d8] border-[#e9e4d8] text-[#1d1f24] shadow-xs'
-                          : 'bg-transparent border-[#e9e4d8]/80 hover:border-[#6b7cff] hover:bg-[#6b7cff]/15 group-hover/check:border-[#6b7cff]'
-                      }`}
-                    >
-                      {item.done ? (
-                        <Check className="w-3.5 h-3.5 stroke-[3] text-[#1d1f24]" />
-                      ) : null}
-                    </span>
-                  </button>
-                </div>
-
-                {/* Content area: Also clickable to toggle completion with ease */}
-                <div
-                  onClick={() => handleToggleHomework(item.id)}
-                  className="flex-1 min-w-0 cursor-pointer select-none group/content"
-                  title={item.done ? '点击标记为未完成' : '点击标记为已完成'}
-                >
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold text-xs px-1.5 py-0.5 bg-[#2a2d36] text-[#6b7cff] border border-[#6b7cff]/30 rounded group-hover/content:border-[#6b7cff]/60 transition-colors">
-                      {item.course}
-                    </span>
-                    {item.title ? (
-                      <span
-                        className={`text-sm font-semibold break-words transition-colors ${
-                          item.done ? 'line-through text-[#8f8b80]' : 'text-[#e9e4d8] group-hover/content:text-white'
-                        }`}
-                      >
-                        {item.title}
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <div className="flex items-center gap-3 text-xs text-[#8f8b80] mt-1">
-                    {item.due ? (
-                      (() => {
-                        const detailed = calculateDetailedRemaining(item.due);
-                        return (
-                          <span
-                            className={`flex items-center gap-1 font-mono font-bold flex-wrap ${
-                              detailed.isOverdue || detailed.isUrgent ? 'text-[#ff6b57]' : isSoon ? 'text-[#e0a050]' : 'text-[#8f8b80]'
-                            }`}
-                          >
-                            <Clock className="w-3 h-3" />
-                            <span>截止: {item.due}</span>
-                            <span className="text-[11px] font-normal opacity-90">({detailed.remainingTime})</span>
-                          </span>
-                        );
-                      })()
-                    ) : (
-                      <span className="text-[#63605a] font-mono">无具体截止日期</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* One-click Add to Tasks / Jump to Pomodoro Focus */}
-                {!item.done && (
-                  <div className="shrink-0 flex items-center pt-0.5">
-                    {!existingTask ? (
-                      <button
-                        type="button"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (onAddTask) {
-                            try {
-                              await onAddTask(taskTitle);
-                              toast(`已顺手加入待办：${taskTitle}`);
-                            } catch (err: any) {
-                              toast('加入待办失败，请重试');
-                            }
-                          }
-                        }}
-                        className="px-2 py-0.5 border border-[#3a3d46] hover:border-[#6b7cff] text-[#8f8b80] hover:text-[#6b7cff] text-[11px] rounded transition-all cursor-pointer flex items-center gap-1 active:scale-95 group/btn"
-                        title="顺手将此项作业加到个人待办清单，方便规划与专注"
-                      >
-                        <Plus className="w-3 h-3 group-hover/btn:scale-110 transition-transform" />
-                        <span>待办</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onJumpToFocusTask) {
-                            onJumpToFocusTask(existingTask.title);
-                          }
-                        }}
-                        className="px-2 py-0.5 bg-[#6b7cff]/20 hover:bg-[#6b7cff] text-[#6b7cff] hover:text-white border border-[#6b7cff]/40 hover:border-[#6b7cff] text-[11px] font-bold rounded transition-all cursor-pointer flex items-center gap-1 shadow-xs active:scale-95"
-                        title="此作业已在待办中，点击立即切换至专注番茄钟开始计时"
-                      >
-                        <span>🍅 去专注</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Delete button */}
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onDelete(item.id);
+                    handleToggleHomework(item.id);
                   }}
-                  className="text-[#63605a] hover:text-[#ff6b57] transition-colors p-1.5 -m-0.5 cursor-pointer shrink-0"
-                  title="删除"
+                  className="p-2 -m-2 flex items-center justify-center cursor-pointer touch-manipulation outline-none focus-visible:ring-2 focus-visible:ring-[#6b7cff] rounded"
+                  aria-label={item.done ? '标记为未完成' : '标记为已完成'}
+                  title={item.done ? '点击标记为未完成' : '点击标记为已完成'}
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <span
+                    className={`w-5 h-5 rounded-[3px] border-2 flex items-center justify-center transition-all duration-150 active:scale-75 select-none ${
+                      item.done
+                        ? 'bg-[#e9e4d8] border-[#e9e4d8] text-[#1d1f24] shadow-xs'
+                        : 'bg-transparent border-[#e9e4d8]/80 hover:border-[#6b7cff] hover:bg-[#6b7cff]/15 group-hover/check:border-[#6b7cff]'
+                    }`}
+                  >
+                    {item.done ? (
+                      <Check className="w-3.5 h-3.5 stroke-[3] text-[#1d1f24]" />
+                    ) : null}
+                  </span>
                 </button>
               </div>
-            );
-          })}
-        </div>
-      )}
+
+              {/* Content area */}
+              <div
+                onClick={() => handleToggleHomework(item.id)}
+                className="flex-1 min-w-0 cursor-pointer select-none group/content"
+                title={item.done ? '点击标记为未完成' : '点击标记为已完成'}
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-xs px-1.5 py-0.5 bg-[#2a2d36] text-[#6b7cff] border border-[#6b7cff]/30 rounded group-hover/content:border-[#6b7cff]/60 transition-colors">
+                    {item.course}
+                  </span>
+                  {item.title ? (
+                    <span
+                      className={`text-sm font-semibold break-words transition-colors ${
+                        item.done ? 'line-through text-[#8f8b80]' : 'text-[#e9e4d8] group-hover/content:text-white'
+                      }`}
+                    >
+                      {item.title}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="flex items-center gap-3 text-xs text-[#8f8b80] mt-1">
+                  {item.due ? (
+                    (() => {
+                      const detailed = calculateDetailedRemaining(item.due);
+                      return (
+                        <span
+                          className={`flex items-center gap-1 font-mono font-bold flex-wrap ${
+                            detailed.isOverdue || detailed.isUrgent ? 'text-[#ff6b57]' : isSoon ? 'text-[#e0a050]' : 'text-[#8f8b80]'
+                          }`}
+                        >
+                          <Clock className="w-3 h-3" />
+                          <span>截止: {item.due}</span>
+                          <span className="text-[11px] font-normal opacity-90">({detailed.remainingTime})</span>
+                        </span>
+                      );
+                    })()
+                  ) : (
+                    <span className="text-[#63605a] font-mono">无具体截止日期</span>
+                  )}
+                </div>
+              </div>
+
+              {/* One-click Add to Tasks / Jump to Pomodoro Focus */}
+              {!item.done && (
+                <div className="shrink-0 flex items-center pt-0.5">
+                  {!existingTask ? (
+                    <button
+                      type="button"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (onAddTask) {
+                          try {
+                            await onAddTask(taskTitle);
+                            toast(`已顺手加入待办：${taskTitle}`);
+                          } catch (err: any) {
+                            toast('加入待办失败，请重试');
+                          }
+                        }
+                      }}
+                      className="px-2 py-0.5 border border-[#3a3d46] hover:border-[#6b7cff] text-[#8f8b80] hover:text-[#6b7cff] text-[11px] rounded transition-all cursor-pointer flex items-center gap-1 active:scale-95 group/btn"
+                      title="顺手将此项作业加到个人待办清单，方便规划与专注"
+                    >
+                      <Plus className="w-3 h-3 group-hover/btn:scale-110 transition-transform" />
+                      <span>待办</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onJumpToFocusTask) {
+                          onJumpToFocusTask(existingTask.title);
+                        }
+                      }}
+                      className="px-2 py-0.5 bg-[#6b7cff]/20 hover:bg-[#6b7cff] text-[#6b7cff] hover:text-white border border-[#6b7cff]/40 hover:border-[#6b7cff] text-[11px] font-bold rounded transition-all cursor-pointer flex items-center gap-1 shadow-xs active:scale-95"
+                      title="此作业已在待办中，点击立即切换至专注番茄钟开始计时"
+                    >
+                      <span>🍅 去专注</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Delete button */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(item.id);
+                }}
+                className="text-[#63605a] hover:text-[#ff6b57] transition-colors p-1.5 -m-0.5 cursor-pointer shrink-0"
+                title="删除"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          );
+        };
+
+        return (
+          <>
+            {/* Status & View Mode Control Bar */}
+            <div className="space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-[#e9e4d8]">
+                {/* Completion Status Tabs */}
+                <div className="flex text-xs font-semibold">
+                  {(['all', 'todo', 'done'] as const).map(f => (
+                    <button
+                      key={f}
+                      onClick={() => setFilter(f)}
+                      className={`py-2 px-3 sm:px-4 transition-colors relative cursor-pointer ${
+                        filter === f ? 'text-[#e9e4d8] font-bold' : 'text-[#8f8b80]'
+                      }`}
+                    >
+                      {f === 'all' ? '全部状态' : f === 'todo' ? '未完成' : '已完成'}
+                      {filter === f && (
+                        <span className="absolute left-2 right-2 -bottom-0.5 h-0.5 bg-[#6b7cff]" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {/* View Mode Switcher (Grouped by Course vs Flat List) */}
+                <div className="flex items-center gap-1 mb-1 bg-[#181a20] p-1 rounded-lg border border-[#2e313d] text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('grouped')}
+                    className={`px-2.5 py-1 rounded flex items-center gap-1 transition-all cursor-pointer font-bold ${
+                      viewMode === 'grouped'
+                        ? 'bg-[#6b7cff] text-white shadow-xs'
+                        : 'text-[#8f8b80] hover:text-[#e9e4d8]'
+                    }`}
+                    title="按课程分类折叠展示"
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>按课程分组</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('flat')}
+                    className={`px-2.5 py-1 rounded flex items-center gap-1 transition-all cursor-pointer font-bold ${
+                      viewMode === 'flat'
+                        ? 'bg-[#6b7cff] text-white shadow-xs'
+                        : 'text-[#8f8b80] hover:text-[#e9e4d8]'
+                    }`}
+                    title="按时间平铺展示"
+                  >
+                    <List className="w-3.5 h-3.5" />
+                    <span>按时间平铺</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Horizontal Course Category Filter Chips */}
+              {availableCourses.length > 0 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+                  <span className="text-[#8f8b80] font-mono text-[11px] shrink-0 flex items-center gap-1">
+                    <Filter className="w-3 h-3 text-[#6b7cff]" />
+                    <span>课程分类:</span>
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCourseFilter('all')}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all cursor-pointer shrink-0 ${
+                      selectedCourseFilter === 'all'
+                        ? 'bg-[#6b7cff]/20 text-[#6b7cff] border-[#6b7cff]'
+                        : 'bg-[#1e2028] text-[#8f8b80] border-[#33363d] hover:text-[#e9e4d8]'
+                    }`}
+                  >
+                    全部课程 ({effectiveHomework.length})
+                  </button>
+
+                  {availableCourses.map(cName => {
+                    const count = courseCounts[cName];
+                    const isSelected = selectedCourseFilter === cName;
+                    return (
+                      <button
+                        key={cName}
+                        type="button"
+                        onClick={() => setSelectedCourseFilter(cName)}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                          isSelected
+                            ? 'bg-[#6b7cff] text-white border-[#6b7cff] shadow-xs'
+                            : 'bg-[#1e2028] text-[#e9e4d8] border-[#33363d] hover:border-[#6b7cff]/50'
+                        }`}
+                      >
+                        <span>{cName}</span>
+                        {count && (
+                          <span
+                            className={`px-1.5 py-0.2 text-[9.5px] rounded-full font-mono ${
+                              isSelected
+                                ? 'bg-black/20 text-white'
+                                : count.pending > 0
+                                ? 'bg-[#6b7cff]/20 text-[#6b7cff]'
+                                : 'bg-[#2a2d36] text-[#8f8b80]'
+                            }`}
+                          >
+                            {count.pending > 0 ? count.pending : '✓'}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Homework List Render */}
+            {filteredList.length === 0 ? (
+              <div className="py-10 px-4 text-center bg-[#1e222c] border border-dashed border-[#6b7cff]/40 rounded space-y-2">
+                <div className="text-sm font-bold text-[#e9e4d8]">☁️ 云端数据库暂无待办作业</div>
+                <div className="text-xs text-[#8f8b80]">
+                  {filter !== 'all' || selectedCourseFilter !== 'all'
+                    ? '当前筛选分类下无匹配作业'
+                    : '暂无作业记录。在上方输入框单行快速录入，或点击「智能粘贴导入」粘贴群消息'}
+                </div>
+                <div className="pt-2 flex justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowSmartPasteModal(true)}
+                    className="px-3.5 py-1.5 bg-[#6b7cff] hover:bg-[#5868e6] text-white text-xs font-bold rounded cursor-pointer transition-colors flex items-center gap-1.5"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>智能粘贴群消息</span>
+                  </button>
+                  {filter === 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => setShowImportModal(true)}
+                      className="px-3.5 py-1.5 bg-[#252834] hover:bg-[#303444] border border-[#e9e4d8]/40 text-[#e9e4d8] text-xs font-bold rounded cursor-pointer transition-colors flex items-center gap-1.5"
+                    >
+                      <DownloadCloud className="w-3.5 h-3.5 text-[#6b7cff]" />
+                      <span>同步官方作业清单</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : viewMode === 'grouped' ? (
+              /* Grouped by Course Collapsible Cards */
+              <div className="space-y-3 pt-1">
+                {groupedHomework.map(group => {
+                  const isCollapsed = Boolean(collapsedCourses[group.courseName]);
+                  return (
+                    <div
+                      key={group.courseName}
+                      className="bg-[#1b1d24] border border-[#33363d] hover:border-[#6b7cff]/40 rounded-xl overflow-hidden shadow-sm transition-all"
+                    >
+                      {/* Card Header */}
+                      <div
+                        onClick={() => toggleCourseCollapse(group.courseName)}
+                        className="w-full px-4 py-3 bg-[#1f222c] hover:bg-[#252834] flex items-center justify-between cursor-pointer select-none transition-colors border-b border-[#2e313d]"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-7 h-7 rounded-lg bg-[#6b7cff]/15 border border-[#6b7cff]/30 flex items-center justify-center text-[#6b7cff] shrink-0">
+                            <BookOpen className="w-4 h-4" />
+                          </div>
+                          <span className="font-bold text-sm text-[#e9e4d8] truncate">
+                            {group.courseName}
+                          </span>
+                          <span
+                            className={`text-[11px] font-mono px-2 py-0.5 rounded-full font-bold shrink-0 ${
+                              group.pendingCount > 0
+                                ? 'bg-[#ff6b57]/20 text-[#ff6b57] border border-[#ff6b57]/30'
+                                : 'bg-[#4ade80]/15 text-[#4ade80] border border-[#4ade80]/30'
+                            }`}
+                          >
+                            {group.pendingCount > 0 ? `${group.pendingCount} 项待办` : '全部已完成 ✓'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 text-[#8f8b80]">
+                          <span className="text-xs font-mono hidden sm:inline">
+                            ({group.items.length} 项作业)
+                          </span>
+                          {isCollapsed ? (
+                            <ChevronDown className="w-4 h-4 text-[#8f8b80]" />
+                          ) : (
+                            <ChevronUp className="w-4 h-4 text-[#6b7cff]" />
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Card Content Items */}
+                      {!isCollapsed && (
+                        <div className="p-3 divide-y divide-[#2a2d34]">
+                          {group.items.map((item, idx) => renderHomeworkRow(item, idx))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Flat List Mode */
+              <div className="divide-y divide-[#2a2d34] bg-[#1b1d24] border border-[#33363d] rounded-xl p-3">
+                {filteredList.map((item, idx) => renderHomeworkRow(item, idx))}
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {/* Smart Group Notice Paste Modal */}
       {showSmartPasteModal && (
