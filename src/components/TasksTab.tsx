@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { TaskItem } from '../types';
 import { pad2 } from '../utils/time';
-import { Trash2, Plus, Timer, Cloud, RefreshCw, Loader2, Check, Mic, Sparkles } from 'lucide-react';
+import { Trash2, Plus, Timer, Cloud, RefreshCw, Loader2, Check } from 'lucide-react';
 import { PomodoroTimer } from './PomodoroTimer';
 import { SAMPLE_TASKS } from '../utils/sampleData';
 import { api } from '../services/api';
-import { VoiceInputModal } from './VoiceInputModal';
 
 interface TasksTabProps {
   tasks: TaskItem[];
@@ -40,138 +39,6 @@ export const TasksTab: React.FC<TasksTabProps> = ({
   const [togglingId, setTogglingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [selectedTaskForPomodoro, setSelectedTaskForPomodoro] = useState<string>(focusTaskTitle || '');
-  const [showVoiceModal, setShowVoiceModal] = useState(false);
-
-  // Anti-freeze Voice Recognition State & Fuse Ref for TasksTab
-  const [isListening, setIsListening] = useState(false);
-  const [showVoiceBubble, setShowVoiceBubble] = useState(false);
-  const [isSimulatingVoice, setIsSimulatingVoice] = useState(false);
-  const voiceRecRef = React.useRef<any>(null);
-  const voiceFuseTimerRef = React.useRef<NodeJS.Timeout | null>(null);
-
-  // Handle Voice Click with 2.5s Fuse Timeout & Zero getUserMedia Conflict
-  const handleTriggerVoice = () => {
-    if (isListening || voiceRecRef.current) {
-      if (voiceRecRef.current) {
-        try {
-          voiceRecRef.current.abort();
-        } catch (e) {}
-        voiceRecRef.current = null;
-      }
-      if (voiceFuseTimerRef.current) {
-        clearTimeout(voiceFuseTimerRef.current);
-        voiceFuseTimerRef.current = null;
-      }
-      setIsListening(false);
-      toast('已停止语音录制');
-      return;
-    }
-
-    const SpeechClass =
-      typeof window !== 'undefined' &&
-      ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
-
-    if (!SpeechClass) {
-      toast('当前浏览器内置语音服务受网络限制，已为您唤起输入框，请直接点击【手机键盘右上角的麦克风】进行语音输入');
-      if (taskInputRef.current) taskInputRef.current.focus();
-      setShowVoiceBubble(true);
-      return;
-    }
-
-    try {
-      const recognition = new SpeechClass();
-      voiceRecRef.current = recognition;
-      recognition.lang = 'zh-CN';
-      recognition.continuous = false;
-      recognition.interimResults = true;
-
-      setIsListening(true);
-      toast('🎤 正在聆听中... 说话后自动识别');
-
-      let hasResult = false;
-
-      // 2.5s Fuse Timer
-      voiceFuseTimerRef.current = setTimeout(() => {
-        if (!hasResult) {
-          if (voiceRecRef.current) {
-            try {
-              voiceRecRef.current.abort();
-            } catch (e) {}
-            voiceRecRef.current = null;
-          }
-          setIsListening(false);
-          toast('当前浏览器内置语音服务受网络限制，已为您唤起输入框，请直接点击【手机键盘右上角的麦克风】进行语音输入');
-          if (taskInputRef.current) taskInputRef.current.focus();
-          setShowVoiceBubble(true);
-        }
-      }, 2500);
-
-      recognition.onresult = (e: any) => {
-        hasResult = true;
-        if (voiceFuseTimerRef.current) {
-          clearTimeout(voiceFuseTimerRef.current);
-          voiceFuseTimerRef.current = null;
-        }
-        setIsListening(false);
-        voiceRecRef.current = null;
-
-        let text = '';
-        for (let i = e.resultIndex; i < e.results.length; ++i) {
-          text += e.results[i][0].transcript;
-        }
-        if (text.trim()) {
-          setTitle(text.trim());
-          toast('语音识别成功！已填入待办框');
-        }
-      };
-
-      recognition.onerror = () => {
-        if (voiceFuseTimerRef.current) {
-          clearTimeout(voiceFuseTimerRef.current);
-          voiceFuseTimerRef.current = null;
-        }
-        setIsListening(false);
-        voiceRecRef.current = null;
-
-        toast('当前浏览器内置语音服务受网络限制，已为您唤起输入框，请直接点击【手机键盘右上角的麦克风】进行语音输入');
-        if (taskInputRef.current) taskInputRef.current.focus();
-        setShowVoiceBubble(true);
-      };
-
-      recognition.onend = () => {
-        if (voiceFuseTimerRef.current) {
-          clearTimeout(voiceFuseTimerRef.current);
-          voiceFuseTimerRef.current = null;
-        }
-        setIsListening(false);
-        voiceRecRef.current = null;
-      };
-
-      recognition.start();
-    } catch (err: any) {
-      if (voiceFuseTimerRef.current) {
-        clearTimeout(voiceFuseTimerRef.current);
-        voiceFuseTimerRef.current = null;
-      }
-      setIsListening(false);
-      voiceRecRef.current = null;
-
-      toast('当前浏览器内置语音服务受网络限制，已为您唤起输入框，请直接点击【手机键盘右上角的麦克风】进行语音输入');
-      if (taskInputRef.current) taskInputRef.current.focus();
-      setShowVoiceBubble(true);
-    }
-  };
-
-  const handleApplyVoicePreset = (presetText: string) => {
-    setIsSimulatingVoice(true);
-    toast('正在模拟识别声纹并解析待办...');
-    setTimeout(() => {
-      setIsSimulatingVoice(false);
-      setTitle(presetText);
-      toast(`已成功识别填入：${presetText}`);
-      if (taskInputRef.current) taskInputRef.current.focus();
-    }, 800);
-  };
 
   // Synchronize incoming focusTaskTitle from external sources (e.g. HomeworkTab)
   useEffect(() => {
@@ -276,15 +143,6 @@ export const TasksTab: React.FC<TasksTabProps> = ({
               <Cloud className="w-3 h-3 text-[#54b285]" />
               <span>D1 云端已同步</span>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowVoiceModal(true)}
-              className="flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 border border-[#ff6b57]/40 text-[#ff6b57] bg-[#ff6b57]/10 hover:bg-[#ff6b57] hover:text-white rounded transition-colors cursor-pointer active:scale-95"
-              title="使用 Gemini 3.5 语音识别快速录入待办任务"
-            >
-              <Mic className="w-3 h-3" />
-              <span>语音录入</span>
-            </button>
           </div>
           <div className="text-[9.5px] font-mono tracking-[3px] text-[#8f8b80] mt-0.5">
             CLOUDFLARE D1 TASKS & POMODORO TIMER
@@ -334,53 +192,6 @@ export const TasksTab: React.FC<TasksTabProps> = ({
         )}
       </div>
 
-      {/* FLOATING VOICE QUICK DEMO BUBBLE PANEL */}
-      {showVoiceBubble && (
-        <div className="bg-[#1c1e24] border-2 border-[#d99a2b] rounded-lg p-3 text-xs shadow-xl animate-fade-in space-y-2.5 relative my-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[#f5bf5b] font-bold">
-              <Sparkles className="w-4 h-4 text-[#d99a2b]" />
-              <span>🎙️ 语音智能识别快捷演示面板（可点击直接填入）</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowVoiceBubble(false)}
-              className="text-[#8f8b80] hover:text-white text-xs cursor-pointer p-0.5"
-            >
-              ✕
-            </button>
-          </div>
-
-          <p className="text-[11px] text-[#a8a399] leading-relaxed">
-            国内安卓浏览器因 Google 语音服务网络限制已为您唤起输入框：您可直接点击【手机键盘右上角的麦克风】进行语音输入，或点击下方 3 个预设模拟识别：
-          </p>
-
-          {isSimulatingVoice ? (
-            <div className="flex items-center justify-center gap-2 py-2 text-[#d99a2b] font-bold font-mono">
-              <Loader2 className="w-4 h-4 animate-spin text-[#d99a2b]" />
-              <span>正在识别声纹与要素提取中 (0.8s)...</span>
-            </div>
-          ) : (
-            <div className="flex flex-col sm:flex-row flex-wrap gap-1.5 pt-0.5">
-              {[
-                '明天下午两点在明理楼B302上数据库理论课',
-                '周五晚上十点前提交Java程序设计实验报告',
-                '下周三上午八点高等数学阶段测验',
-              ].map((preset, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => handleApplyVoicePreset(preset)}
-                  className="flex-1 text-left px-2.5 py-1.5 bg-[#252832] hover:bg-[#d99a2b] text-[#f5bf5b] hover:text-[#16181d] border border-[#d99a2b]/40 rounded text-[11.5px] font-bold transition-all cursor-pointer shadow-xs active:scale-95"
-                >
-                  ⚡ {preset}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Add Form */}
       <form onSubmit={handleAdd} className="bg-[#24262c] p-3 border border-[#33363d] rounded flex gap-2 items-center">
         <input
@@ -392,19 +203,6 @@ export const TasksTab: React.FC<TasksTabProps> = ({
           disabled={submitting}
           className="flex-1 bg-transparent border-b-2 border-[#e9e4d8] text-sm text-[#e9e4d8] py-1 px-1 outline-none disabled:opacity-60"
         />
-        <button
-          type="button"
-          onClick={handleTriggerVoice}
-          className={`px-2.5 py-1.5 rounded transition-all cursor-pointer flex items-center justify-center shrink-0 active:scale-95 border ${
-            isListening
-              ? 'bg-red-500/20 text-red-400 border-red-500 animate-pulse'
-              : 'bg-[#181a1f] hover:bg-[#ff6b57]/20 text-[#ff6b57] border-[#3a3d46] hover:border-[#ff6b57]'
-          }`}
-          title={isListening ? '点击停止语音识别' : '开启极速语音录入 (带有 2.5s 防卡死熔断器)'}
-        >
-          <Mic className="w-4 h-4" />
-          <span className="text-xs ml-1 font-medium hidden sm:inline">{isListening ? '聆听中' : '语音'}</span>
-        </button>
         <button
           type="submit"
           disabled={submitting || !title.trim()}
@@ -577,27 +375,6 @@ export const TasksTab: React.FC<TasksTabProps> = ({
         </div>
       )}
 
-      {/* Voice Input Modal (Gemini 3.5 Transcribe) */}
-      {showVoiceModal && (
-        <VoiceInputModal
-          isOpen={showVoiceModal}
-          onClose={() => setShowVoiceModal(false)}
-          mode="task"
-          targetInputRef={taskInputRef}
-          onFocusTargetInput={() => {
-            if (taskInputRef.current) {
-              taskInputRef.current.focus();
-            }
-          }}
-          onConfirmText={text => {
-            setTitle(text);
-          }}
-          onDirectAdd={async text => {
-            await onAddTask(text);
-          }}
-          toast={toast}
-        />
-      )}
     </div>
   );
 };
