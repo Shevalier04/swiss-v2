@@ -49,3 +49,24 @@ self.addEventListener('notificationclick', function (event) {
     })
   );
 });
+
+// Support direct messages from webpage to trigger system notification on Android
+self.addEventListener('message', function (event) {
+  if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+    const title = event.data.title || '🔔 掌上课表 · 本地系统级提醒';
+    const options = {
+      body: event.data.body || '开课与作业提醒',
+      icon: event.data.icon || '/icon.svg',
+      badge: event.data.badge || '/icon.svg',
+      tag: event.data.tag || 'course-reminder-' + Date.now(),
+      renotify: true,
+      requireInteraction: true,
+      vibrate: [200, 100, 200],
+      data: {
+        url: event.data.url || '/',
+        timestamp: Date.now()
+      }
+    };
+    event.waitUntil(self.registration.showNotification(title, options));
+  }
+});

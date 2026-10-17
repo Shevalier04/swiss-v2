@@ -24,6 +24,7 @@ export interface NotificationCapability {
   hasServiceWorker: boolean;
   isHuaweiOrDomestic: boolean;
   isQuark: boolean;
+  isPushServiceUnreachable?: boolean;
   permission: NotificationPermission | 'unsupported';
   mode: 'webpush' | 'local_system' | 'quark_inapp' | 'unsupported';
 }
@@ -53,7 +54,14 @@ export function detectNotificationCapability(): NotificationCapability {
   const ua = (navigator.userAgent || '').toLowerCase();
   const hasNotification = 'Notification' in window;
   const hasServiceWorker = 'serviceWorker' in navigator;
-  const hasPushManager = 'PushManager' in window && hasServiceWorker;
+
+  // Check if push service error previously occurred (e.g. domestic Android missing FCM)
+  const isPushServiceUnreachable =
+    typeof localStorage !== 'undefined' &&
+    localStorage.getItem('cs_fcm_unreachable') === 'true';
+
+  const hasPushManagerRaw = 'PushManager' in window && hasServiceWorker;
+  const hasPushManager = hasPushManagerRaw && !isPushServiceUnreachable;
 
   // Accurately identify Quark or any mobile/domestic environment without Notification API
   const isQuark =
@@ -82,6 +90,7 @@ export function detectNotificationCapability(): NotificationCapability {
     hasServiceWorker,
     isHuaweiOrDomestic,
     isQuark,
+    isPushServiceUnreachable,
     permission,
     mode,
   };
@@ -499,5 +508,72 @@ export async function sendLocalTestNotification(): Promise<{ success: boolean; m
   } catch (err: any) {
     return { success: false, message: err?.message || '发送本地系统通知失败' };
   }
+}
+
+export async function scheduleDelayedLockScreenTest(delaySeconds: number = 5): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  if (typeof window === 'undefined') {
+    return { success: false, message: '环境不支持' };
+  }
+
+  if (!('Notification' in window) || isQuarkBrowser()) {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      setTimeout(() => {
+        try {
+          navigator.vibrate([400, 200, 400]);
+        } catch {}
+      }, delaySeconds * 1000);
+    }
+    return {
+      success: true,
+      message: `检测到夸克或无通知环境：已安排 ${delaySeconds} 秒后触发手机物理震动测试！`,
+    };
+  }
+
+  if (Notification.permission !== 'granted') {
+    return {
+      success: false,
+      message: '请先点击“开启系统通知权限”允许通知，再进行锁屏测试。',
+    };
+  }
+
+  const reg = await getActiveServiceWorker();
+
+  setTimeout(async () => {
+    try {
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate([300, 150, 300, 150, 400]);
+        } catch {}
+      }
+
+      if (reg && reg.showNotification) {
+        await reg.showNotification('🔔 掌上课表 · 锁屏测试通知', {
+          body: '测试成功！若您能在手机黑屏/锁屏界面看到此横幅，证明系统锁屏通知与震动已完美放行！',
+          icon: '/icon.svg',
+          badge: '/icon.svg',
+          tag: 'delayed-lock-test-' + Date.now(),
+          renotify: true,
+          requireInteraction: true,
+          vibrate: [300, 150, 300, 150, 400],
+          data: { url: '/?tab=remind' },
+        } as any);
+      } else {
+        new Notification('🔔 掌上课表 · 锁屏测试通知', {
+          body: '测试成功！若您能在手机黑屏/锁屏界面看到此横幅，证明系统锁屏通知已放行！',
+          icon: '/icon.svg',
+        });
+      }
+    } catch (err: any) {
+      console.warn('Delayed lockscreen notification trigger failed:', err);
+    }
+  }, delaySeconds * 1000);
+
+  return {
+    success: true,
+    message: `已安排 ${delaySeconds} 秒后发送锁屏通知！请立即按电源键锁屏，观察锁屏横幅与震动！`,
+  };
 }
 
