@@ -18,6 +18,57 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
+export interface NotificationCapability {
+  hasPushManager: boolean;
+  hasNotification: boolean;
+  hasServiceWorker: boolean;
+  isHuaweiOrDomestic: boolean;
+  permission: NotificationPermission | 'unsupported';
+  mode: 'webpush' | 'local_system' | 'unsupported';
+}
+
+export function detectNotificationCapability(): NotificationCapability {
+  if (typeof window === 'undefined') {
+    return {
+      hasPushManager: false,
+      hasNotification: false,
+      hasServiceWorker: false,
+      isHuaweiOrDomestic: false,
+      permission: 'unsupported',
+      mode: 'unsupported',
+    };
+  }
+
+  const ua = (navigator.userAgent || '').toLowerCase();
+  const isHuaweiOrDomestic =
+    /huaweibrowser|huawei|harmonyos|honor|heytap|micromessenger|mqqbrowser|ucbrowser|baidubrowser|quark/i.test(
+      ua
+    );
+
+  const hasServiceWorker = 'serviceWorker' in navigator;
+  const hasPushManager = 'PushManager' in window && hasServiceWorker;
+  const hasNotification = 'Notification' in window;
+  const permission: NotificationPermission | 'unsupported' = hasNotification
+    ? Notification.permission
+    : 'unsupported';
+
+  let mode: 'webpush' | 'local_system' | 'unsupported' = 'unsupported';
+  if (hasPushManager && hasNotification) {
+    mode = 'webpush';
+  } else if (hasNotification) {
+    mode = 'local_system';
+  }
+
+  return {
+    hasPushManager,
+    hasNotification,
+    hasServiceWorker,
+    isHuaweiOrDomestic,
+    permission,
+    mode,
+  };
+}
+
 export function isPushNotificationSupported(): boolean {
   if (typeof window === 'undefined') return false;
   return (
@@ -35,7 +86,7 @@ export function getPushPermissionState(): NotificationPermission | 'unsupported'
 }
 
 export async function getActiveServiceWorker(): Promise<ServiceWorkerRegistration | null> {
-  if (!isPushNotificationSupported()) return null;
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return null;
 
   try {
     // Try to get ready registration with a quick timeout fallback
@@ -265,3 +316,74 @@ export async function fetchServerPushStatus(): Promise<{
     };
   }
 }
+
+export async function requestLocalSystemPermission(): Promise<{
+  granted: boolean;
+  status: NotificationPermission | 'unsupported';
+  message: string;
+}> {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return {
+      granted: false,
+      status: 'unsupported',
+      message: '当前浏览器不支持系统通知 API，建议在手机“添加到桌面”或使用 Chrome / Edge 访问',
+    };
+  }
+
+  try {
+    const res = await Notification.requestPermission();
+    if (res === 'granted') {
+      return {
+        granted: true,
+        status: res,
+        message: '手机系统级通知权限已开启！',
+      };
+    } else {
+      return {
+        granted: false,
+        status: res,
+        message: '通知权限未允许，请在浏览器或手机“设置 - 通知”中允许通知',
+      };
+    }
+  } catch (err: any) {
+    return {
+      granted: false,
+      status: 'denied',
+      message: err?.message || '申请通知权限失败',
+    };
+  }
+}
+
+export async function sendLocalTestNotification(): Promise<{ success: boolean; message: string }> {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return { success: false, message: '当前浏览器不支持通知 API' };
+  }
+  if (Notification.permission !== 'granted') {
+    return { success: false, message: '系统通知权限尚未允许，请先点击上方“开启系统通知权限”' };
+  }
+
+  try {
+    const reg = await getActiveServiceWorker();
+    if (reg && reg.showNotification) {
+      await reg.showNotification('🔔 掌上课表 · 本地系统级提醒测试', {
+        body: '这是本地系统通知！即使未连 Google FCM，配合华为手机后台常驻权限也可在开课前准时提醒。',
+        icon: '/icon.svg',
+        badge: '/icon.svg',
+        tag: 'local-huawei-test',
+        renotify: true,
+      } as any);
+      return { success: true, message: '本地系统通知已发出！请下拉通知栏或锁屏查看。' };
+    }
+  } catch (e) {}
+
+  try {
+    new Notification('🔔 掌上课表 · 本地系统级提醒测试', {
+      body: '这是本地系统通知！在上课与作业截止前，手机通知中心将准时推送横幅与声音。',
+      icon: '/icon.svg',
+    });
+    return { success: true, message: '本地系统通知已弹出！' };
+  } catch (err: any) {
+    return { success: false, message: err?.message || '发送本地系统通知失败' };
+  }
+}
+

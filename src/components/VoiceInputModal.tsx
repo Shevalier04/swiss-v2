@@ -225,18 +225,26 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
           : '请将这段语音内容原样转录为待办任务纯文本，直接输出文本内容，不要包含多余解说。';
 
       const result = await api.transcribeAudio(base64Data, mimeType, prompt);
-      if (result && result.text) {
+      if (result && result.text && result.text.trim()) {
         setRecognizedText(result.text.trim());
         toast('语音识别成功');
-      } else if (!recognizedText.trim()) {
+      } else if (recognizedText.trim()) {
+        toast('已采用本地实时语音识别结果');
+      } else if (result?.fallbackToLocal) {
+        setErrorMsg('请靠近麦克风清晰重试，或直接在下方打字/点选预设');
+      } else {
         setErrorMsg('未检测到清晰的语音内容，请靠近麦克风重试');
       }
     } catch (err: any) {
       console.warn('Gemini transcribe failed, checking existing web speech text:', err);
-      if (!recognizedText.trim()) {
-        setErrorMsg(err.message || '语音转录遇到问题，请重试或直接手动输入');
+      if (recognizedText.trim()) {
+        toast('已采用本地离线语音识别结果');
       } else {
-        toast('已采用实时语音识别结果');
+        const friendlyMsg =
+          err?.message === 'BACKEND_HTML_FALLBACK' || err?.isFallback
+            ? '云端语音引擎暂未就绪，已切换为本地模式。请重试或直接打字输入。'
+            : (err?.message || '语音转录遇到问题，请重试或直接打字输入');
+        setErrorMsg(friendlyMsg);
       }
     } finally {
       setIsTranscribing(false);

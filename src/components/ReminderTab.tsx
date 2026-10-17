@@ -15,12 +15,16 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import {
+  detectNotificationCapability,
+  NotificationCapability,
   isPushNotificationSupported,
   getCurrentPushSubscription,
   subscribeToPushNotifications,
   unsubscribeFromPushNotifications,
   sendServerTestPush,
   fetchServerPushStatus,
+  requestLocalSystemPermission,
+  sendLocalTestNotification,
 } from '../utils/pushManager';
 
 interface ReminderTabProps {
@@ -40,6 +44,12 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
   onTriggerSundayTestReminder,
   toast,
 }) => {
+  const [capability, setCapability] = useState<NotificationCapability>(() => detectNotificationCapability());
+  const [showHuaweiGuide, setShowHuaweiGuide] = useState(false);
+  const [localSysPermission, setLocalSysPermission] = useState<NotificationPermission | 'unsupported'>(() => {
+    return typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
+  });
+
   const [isPushSupported, setIsPushSupported] = useState(false);
   const [isPushSubscribed, setIsPushSubscribed] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
@@ -47,10 +57,11 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
   const [serverDeviceCount, setServerDeviceCount] = useState<number>(0);
 
   useEffect(() => {
-    const supported = isPushNotificationSupported();
-    setIsPushSupported(supported);
+    const cap = detectNotificationCapability();
+    setCapability(cap);
+    setIsPushSupported(cap.hasPushManager);
 
-    if (supported) {
+    if (cap.hasPushManager) {
       getCurrentPushSubscription().then(sub => {
         setIsPushSubscribed(!!sub);
       });
@@ -111,6 +122,22 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
     } finally {
       setTestingPush(false);
     }
+  };
+
+  const handleRequestLocalPermission = async () => {
+    const res = await requestLocalSystemPermission();
+    setLocalSysPermission(res.status);
+    if (res.granted) {
+      onUpdateSettings({ sys: true });
+      toast(res.message);
+    } else {
+      toast(res.message);
+    }
+  };
+
+  const handleTestLocalNotification = async () => {
+    const res = await sendLocalTestNotification();
+    toast(res.message);
   };
 
   const now = new Date();
@@ -193,9 +220,11 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
           </b>
         </div>
         <div>
-          锁屏离线推送：
-          <b className={isPushSubscribed ? 'text-[#4ade80]' : 'text-[#8f8b80]'}>
-            {isPushSubscribed ? `已激活 ✓ (当前账号已绑定 ${serverDeviceCount} 台设备)` : '未开启'}
+          {capability.hasPushManager ? '锁屏离线推送：' : '系统通知机制：'}
+          <b className={capability.hasPushManager ? (isPushSubscribed ? 'text-[#4ade80]' : 'text-[#8f8b80]') : (localSysPermission === 'granted' ? 'text-[#4ade80]' : 'text-[#8f8b80]')}>
+            {capability.hasPushManager
+              ? (isPushSubscribed ? `已激活 ✓ (当前账号已绑定 ${serverDeviceCount} 台设备)` : '未开启')
+              : (localSysPermission === 'granted' ? '本地增强系统通知已就绪 ✓' : '本地模式 (待授权)')}
           </b>
           {' ｜ '}作业截止临期：<b className="text-[#6b7cff]">24h / 3h 自动预警</b>
         </div>
@@ -347,94 +376,178 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
         </div>
       </div>
 
-      {/* Dedicated Web Push Card */}
-      <div className="bg-[#1f222a] border-2 border-[#4ade80]/60 p-4 rounded-lg shadow-lg text-[#e9e4d8] space-y-3.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <Radio className="w-4 h-4 text-[#4ade80]" />
-            <h4 className="font-editorial font-bold text-base text-[#e9e4d8]">
-              锁屏与系统级 Web Push 离线推送
-            </h4>
-          </div>
-          <span className="text-[10px] px-2 py-0.5 rounded bg-[#4ade80]/20 text-[#4ade80] font-bold">
-            锁屏即达
-          </span>
-        </div>
-
-        <p className="text-xs text-[#a8a399] leading-relaxed">
-          采用标准 W3C Web Push 规范。<strong>无需打开网页或保持手机亮屏</strong>，即使手机黑屏休眠或切至后台，云端定时器也会在<strong>课前 15 分钟与作业截止前</strong>自动唤醒手机通知中心并震动提醒！
-        </p>
-
-        {/* Status indicator row */}
-        <div className="bg-[#16181d] border border-[#2e313b] p-3 rounded text-xs space-y-2">
+      {/* Push / Local System Notification Card */}
+      {capability.hasPushManager ? (
+        <div className="bg-[#1f222a] border-2 border-[#4ade80]/60 p-4 rounded-lg shadow-lg text-[#e9e4d8] space-y-3.5">
           <div className="flex items-center justify-between">
-            <span className="text-[#8f8b80]">当前浏览器支持：</span>
-            <span className={isPushSupported ? 'text-[#4ade80] font-medium' : 'text-[#ff6b57] font-medium'}>
-              {isPushSupported ? '支持 Web Push ✓' : '暂不支持（建议使用 Chrome / Edge 或将应用添加到主屏幕）'}
+            <div className="flex items-center gap-2.5">
+              <Radio className="w-4 h-4 text-[#4ade80]" />
+              <h4 className="font-editorial font-bold text-base text-[#e9e4d8]">
+                锁屏与系统级 Web Push 离线推送
+              </h4>
+            </div>
+            <span className="text-[10px] px-2 py-0.5 rounded bg-[#4ade80]/20 text-[#4ade80] font-bold">
+              锁屏即达
             </span>
           </div>
+
+          <p className="text-xs text-[#a8a399] leading-relaxed">
+            采用标准 W3C Web Push 规范。<strong>无需打开网页或保持手机亮屏</strong>，即使手机黑屏休眠或切至后台，云端定时器也会在<strong>课前 15 分钟与作业截止前</strong>自动唤醒手机通知中心并震动提醒！
+          </p>
+
+          {/* Status indicator row */}
+          <div className="bg-[#16181d] border border-[#2e313b] p-3 rounded text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[#8f8b80]">当前浏览器支持：</span>
+              <span className="text-[#4ade80] font-medium">支持 Web Push 云唤醒 ✓</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[#8f8b80]">当前设备推送状态：</span>
+              <span className={isPushSubscribed ? 'text-[#4ade80] font-bold' : 'text-[#8f8b80]'}>
+                {isPushSubscribed ? '已在此设备激活 ✓' : '未开启本设备推送'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[#8f8b80]">账号绑定接收设备数：</span>
+              <span className="text-[#e9e4d8] font-mono font-medium">
+                {serverDeviceCount} 台设备在线接收
+              </span>
+            </div>
+          </div>
+
+          {/* Toggle & Test Actions */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            <button
+              type="button"
+              disabled={pushLoading}
+              onClick={handleTogglePush}
+              className={`py-2.5 px-3 rounded text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                isPushSubscribed
+                  ? 'bg-[#2a2d36] text-[#e9e4d8] border border-[#4ade80]/40 hover:bg-[#323642]'
+                  : 'bg-[#4ade80] text-[#1d1f24] hover:bg-[#3ec972] shadow-md shadow-[#4ade80]/20'
+              }`}
+            >
+              {pushLoading ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : isPushSubscribed ? (
+                <CheckCircle className="w-3.5 h-3.5 text-[#4ade80]" />
+              ) : (
+                <Bell className="w-3.5 h-3.5" />
+              )}
+              <span>
+                {pushLoading ? '处理中...' : isPushSubscribed ? '已开启锁屏推送 (点击注销)' : '开启锁屏系统推送'}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              disabled={testingPush || !isPushSubscribed}
+              onClick={handleTestServerPush}
+              className={`py-2.5 px-3 rounded text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer border ${
+                isPushSubscribed
+                  ? 'bg-[#262832] border-[#6b7cff] text-[#6b7cff] hover:bg-[#6b7cff] hover:text-white'
+                  : 'bg-[#1b1c22] border-[#33363d] text-[#62605b] cursor-not-allowed'
+              }`}
+            >
+              {testingPush ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Smartphone className="w-3.5 h-3.5" />
+              )}
+              <span>{testingPush ? '发送测试推送中...' : '发送锁屏测试通知 (可熄屏验证)'}</span>
+            </button>
+          </div>
+
+          <div className="text-[11px] text-[#78746c] leading-relaxed border-t border-[#2e313b] pt-2">
+            💡 锁屏提醒说明：点击“开启锁屏系统推送”授权后，即使手机锁屏放入书包，云端也会在开课前 15 分钟及作业临期 24h / 3h 准时推送；iOS 用户需先在 Safari 中“添加到主屏幕”开启系统通知。
+          </div>
+        </div>
+      ) : (
+        <div className="bg-[#1f222a] border-2 border-[#6b7cff]/60 p-4 rounded-lg shadow-lg text-[#e9e4d8] space-y-3.5">
           <div className="flex items-center justify-between">
-            <span className="text-[#8f8b80]">当前设备推送状态：</span>
-            <span className={isPushSubscribed ? 'text-[#4ade80] font-bold' : 'text-[#8f8b80]'}>
-              {isPushSubscribed ? '已在此设备激活 ✓' : '未开启本设备推送'}
+            <div className="flex items-center gap-2.5">
+              <Smartphone className="w-4 h-4 text-[#6b7cff]" />
+              <h4 className="font-editorial font-bold text-base text-[#e9e4d8]">
+                {capability.isHuaweiOrDomestic ? '华为/鸿蒙设备 · 本地增强系统级通知' : '本地增强系统级通知模式'}
+              </h4>
+            </div>
+            <span className="text-[10px] px-2 py-0.5 rounded bg-[#6b7cff]/20 text-[#8ea4ff] font-bold">
+              本地系统通知
             </span>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-[#8f8b80]">账号绑定接收设备数：</span>
-            <span className="text-[#e9e4d8] font-mono font-medium">
-              {serverDeviceCount} 台设备在线接收
-            </span>
+
+          <p className="text-xs text-[#a8a399] leading-relaxed">
+            检测到当前环境为{capability.isHuaweiOrDomestic ? '华为浏览器 / 鸿蒙系统' : '移动端环境'}（系统未内置 Google FCM 远端中继）。本应用已为您自动无缝切换为<strong>「本地增强系统级通知与后台守护模式」</strong>！结合手机后台自启动权限，课前与作业临期仍可在手机通知栏准时弹出横幅！
+          </p>
+
+          {/* Status indicator row */}
+          <div className="bg-[#16181d] border border-[#2e313b] p-3 rounded text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[#8f8b80]">系统通知能力支持：</span>
+              <span className={capability.hasNotification ? 'text-[#4ade80] font-medium' : 'text-[#ff6b57] font-medium'}>
+                {capability.hasNotification ? '支持本地原生系统通知 ✓' : '暂不支持（需允许通知权限）'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[#8f8b80]">系统通知权限状态：</span>
+              <span className={localSysPermission === 'granted' ? 'text-[#4ade80] font-bold' : 'text-[#ff6b57] font-bold'}>
+                {localSysPermission === 'granted' ? '已授权允许 ✓' : '未授权 (请点击下方开启)'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[#8f8b80]">通知提醒机制：</span>
+              <span className="text-[#6b7cff] font-medium">
+                本地 Notification + Service Worker 保活
+              </span>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handleRequestLocalPermission}
+              className={`py-2.5 px-3 rounded text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                localSysPermission === 'granted'
+                  ? 'bg-[#2a2d36] text-[#e9e4d8] border border-[#4ade80]/40 hover:bg-[#323642]'
+                  : 'bg-[#6b7cff] text-white hover:bg-[#5b6cee] shadow-md shadow-[#6b7cff]/20'
+              }`}
+            >
+              {localSysPermission === 'granted' ? (
+                <CheckCircle className="w-3.5 h-3.5 text-[#4ade80]" />
+              ) : (
+                <Bell className="w-3.5 h-3.5" />
+              )}
+              <span>
+                {localSysPermission === 'granted' ? '系统通知已开启 ✓ (重新检测)' : '开启系统通知权限'}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleTestLocalNotification}
+              className="py-2.5 px-3 rounded text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer border bg-[#262832] border-[#6b7cff] text-[#6b7cff] hover:bg-[#6b7cff] hover:text-white"
+            >
+              <Play className="w-3.5 h-3.5" />
+              <span>测试发送本地系统通知</span>
+            </button>
+          </div>
+
+          {/* Keepalive Guide Trigger */}
+          <div className="border-t border-[#2e313b] pt-2.5 flex items-center justify-between">
+            <div className="text-[11px] text-[#8f8b80]">
+              💡 手机熄屏后若想准时接收通知，需配置后台保活：
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowHuaweiGuide(true)}
+              className="text-[11px] text-[#6b7cff] hover:text-[#8ea4ff] font-bold underline cursor-pointer shrink-0 ml-2"
+            >
+              查看华为/鸿蒙保活指引 →
+            </button>
           </div>
         </div>
-
-        {/* Toggle & Test Actions */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-          <button
-            type="button"
-            disabled={pushLoading}
-            onClick={handleTogglePush}
-            className={`py-2.5 px-3 rounded text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-              isPushSubscribed
-                ? 'bg-[#2a2d36] text-[#e9e4d8] border border-[#4ade80]/40 hover:bg-[#323642]'
-                : 'bg-[#4ade80] text-[#1d1f24] hover:bg-[#3ec972] shadow-md shadow-[#4ade80]/20'
-            }`}
-          >
-            {pushLoading ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            ) : isPushSubscribed ? (
-              <CheckCircle className="w-3.5 h-3.5 text-[#4ade80]" />
-            ) : (
-              <Bell className="w-3.5 h-3.5" />
-            )}
-            <span>
-              {pushLoading ? '处理中...' : isPushSubscribed ? '已开启锁屏推送 (点击注销)' : '开启锁屏系统推送'}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            disabled={testingPush || !isPushSubscribed}
-            onClick={handleTestServerPush}
-            className={`py-2.5 px-3 rounded text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer border ${
-              isPushSubscribed
-                ? 'bg-[#262832] border-[#6b7cff] text-[#6b7cff] hover:bg-[#6b7cff] hover:text-white'
-                : 'bg-[#1b1c22] border-[#33363d] text-[#62605b] cursor-not-allowed'
-            }`}
-          >
-            {testingPush ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Smartphone className="w-3.5 h-3.5" />
-            )}
-            <span>{testingPush ? '发送测试推送中...' : '发送锁屏测试通知 (可熄屏验证)'}</span>
-          </button>
-        </div>
-
-        {/* Device hints */}
-        <div className="text-[11px] text-[#78746c] leading-relaxed border-t border-[#2e313b] pt-2">
-          💡 锁屏提醒说明：点击“开启锁屏系统推送”授权后，即使手机锁屏放入书包，云端也会在开课前 15 分钟及作业临期 24h / 3h 准时推送；iOS 用户需先在 Safari 中“添加到主屏幕”开启系统通知。
-        </div>
-      </div>
+      )}
 
       {/* Lead Time Selection */}
       <div>
@@ -595,6 +708,73 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
       <div className="p-3 border-l-2 border-[#8f8b80] bg-[#1a1c21] text-xs text-[#8f8b80] leading-relaxed">
         提示：周日晚间提醒将在周日晚 20:00 准时通过应用内弹窗、系统通知中心及蜂鸣声播报周一早晨课程；同时课程表将在周日晚 18:00 自动为您提前载入新一周课表。
       </div>
+
+      {/* Huawei Keepalive Guide Modal */}
+      {showHuaweiGuide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#1f222a] border-2 border-[#6b7cff] rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl text-[#e9e4d8]">
+            <div className="flex items-center justify-between border-b border-[#333644] pb-3">
+              <div className="flex items-center gap-2">
+                <Smartphone className="w-5 h-5 text-[#6b7cff]" />
+                <h3 className="font-editorial font-bold text-lg text-[#e9e4d8]">
+                  华为 / 鸿蒙手机后台保活指引
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHuaweiGuide(false)}
+                className="text-[#8f8b80] hover:text-white text-lg font-bold p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="text-xs text-[#a8a399] leading-relaxed space-y-3">
+              <div className="bg-[#16181d] p-3 rounded border border-[#2e313b] space-y-1">
+                <div className="font-bold text-[#e9e4d8] flex items-center gap-1.5">
+                  <span className="w-4 h-4 rounded-full bg-[#6b7cff] text-white text-[10px] flex items-center justify-center">1</span>
+                  <span>开启“应用启动管理”后台常驻</span>
+                </div>
+                <p className="text-[11px] text-[#8f8b80] pl-5">
+                  打开手机【设置】 ➔ 【应用和服务】 ➔ 【应用启动管理】 ➔ 找到“华为浏览器”或“掌上课表” ➔ 关闭“自动管理”，切换为<strong>【手动管理】</strong>，勾选“允许自启动”、“允许关联启动”和<strong>“允许后台活动”</strong>。
+                </p>
+              </div>
+
+              <div className="bg-[#16181d] p-3 rounded border border-[#2e313b] space-y-1">
+                <div className="font-bold text-[#e9e4d8] flex items-center gap-1.5">
+                  <span className="w-4 h-4 rounded-full bg-[#6b7cff] text-white text-[10px] flex items-center justify-center">2</span>
+                  <span>多任务卡片锁定</span>
+                </div>
+                <p className="text-[11px] text-[#8f8b80] pl-5">
+                  从手机屏幕底部轻轻上滑进入后台多任务界面，在“华为浏览器”或“掌上课表”卡片上<strong>向下拉动</strong>，卡片上方出现小锁🔒标记，防止被系统一键清理。
+                </p>
+              </div>
+
+              <div className="bg-[#16181d] p-3 rounded border border-[#2e313b] space-y-1">
+                <div className="font-bold text-[#e9e4d8] flex items-center gap-1.5">
+                  <span className="w-4 h-4 rounded-full bg-[#4ade80] text-[#1d1f24] text-[10px] flex items-center justify-center">3</span>
+                  <span>推荐：添加到桌面快捷方式</span>
+                </div>
+                <p className="text-[11px] text-[#8f8b80] pl-5">
+                  在华为浏览器底部点击“菜单 (三道杠)” ➔ 选择<strong>“添加到桌面”</strong>，之后像 App 一样直接从桌面图标点开，拥有更加稳定常驻的系统通知与独立后台通道。
+                </p>
+              </div>
+
+              <div className="text-[10.5px] text-[#78746c] italic pt-1">
+                * 补充说明：如您需要绝对零后台、关机/纯休眠状态下的云端中继推送，也可在华为应用市场安装使用 Edge 或 Chrome 手机版访问本系统。
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowHuaweiGuide(false)}
+              className="w-full py-2.5 bg-[#6b7cff] hover:bg-[#5b6cee] text-white font-bold text-xs rounded transition-colors cursor-pointer"
+            >
+              我知道了
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

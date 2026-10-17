@@ -717,10 +717,17 @@ export const api = {
   /**
    * Gemini 3.5 语音转录接口 (model: gemini-3.5-transcribe)
    */
-  async transcribeAudio(audioBase64: string, mimeType: string = 'audio/webm', prompt?: string): Promise<{ text: string }> {
-    return await request<{ text: string }>('/ai/transcribe', {
-      method: 'POST',
-      body: JSON.stringify({ audio: audioBase64, mimeType, prompt }),
-    });
+  async transcribeAudio(audioBase64: string, mimeType: string = 'audio/webm', prompt?: string): Promise<{ text: string; fallbackToLocal?: boolean }> {
+    try {
+      return await request<{ text: string; fallbackToLocal?: boolean }>('/ai/transcribe', {
+        method: 'POST',
+        body: JSON.stringify({ audio: audioBase64, mimeType, prompt }),
+      });
+    } catch (err: any) {
+      if (err?.message === 'BACKEND_HTML_FALLBACK' || err?.isFallback) {
+        return { text: '', fallbackToLocal: true };
+      }
+      throw err;
+    }
   },
 };
