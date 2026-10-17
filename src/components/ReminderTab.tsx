@@ -156,17 +156,64 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
       setShowUnblockGuide(true);
       return;
     }
-    setTestingPush(true);
-    toast('正在发送系统级 Web Push 测试推送，请立即熄屏或切到后台查看...');
 
-    try {
-      const res = await sendServerTestPush();
-      toast(res.message);
-    } catch (err: any) {
-      toast(err.message || '测试推送请求失败');
-    } finally {
-      setTestingPush(false);
+    setTestingPush(true);
+    toast('请在 5 秒内按电源键锁屏/息屏，5 秒后将触发系统锁屏通知');
+
+    // 1. Send postMessage to Service Worker for background timer
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        if (reg && reg.active) {
+          reg.active.postMessage({
+            type: 'SCHEDULE_LOCK_NOTIFICATION',
+            delay: 5000,
+            title: '🔔 掌上课表 · 系统级锁屏推送测试',
+            body: '测试成功！这是一条高优先级锁屏通知。若可在黑屏锁屏看到，说明系统通知与震动已放行！',
+            vibrate: [300, 100, 300],
+            url: '/?tab=remind',
+          });
+        }
+      } catch (e) {
+        console.warn('SW postMessage failed:', e);
+      }
     }
+
+    // 2. Direct 5000ms setTimeout via navigator.serviceWorker.ready.showNotification
+    setTimeout(async () => {
+      try {
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+          try {
+            navigator.vibrate([300, 100, 300]);
+          } catch {}
+        }
+
+        if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+          const reg = await navigator.serviceWorker.ready;
+          if (reg && reg.showNotification) {
+            await reg.showNotification('🔔 掌上课表 · 系统级锁屏推送测试', {
+              body: '测试成功！这是一条高优先级锁屏通知。若能在黑屏锁屏看到，说明系统通知与震动已放行！',
+              icon: '/icon.svg',
+              badge: '/icon.svg',
+              tag: 'delayed-lock-test-' + Date.now(),
+              renotify: true,
+              requireInteraction: true,
+              vibrate: [300, 100, 300],
+              data: { url: '/?tab=remind' },
+            } as any);
+          } else if (typeof Notification !== 'undefined') {
+            new Notification('🔔 掌上课表 · 系统级锁屏推送测试', {
+              body: '测试成功！这是一条高优先级锁屏通知。若能在黑屏锁屏看到，说明系统通知已放行！',
+              icon: '/icon.svg',
+            });
+          }
+        }
+      } catch (err: any) {
+        console.warn('Delayed test notification error:', err);
+      } finally {
+        setTestingPush(false);
+      }
+    }, 5000);
   };
 
   const handleCopyUrlForNativeBrowser = () => {
@@ -548,13 +595,17 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-[#8f8b80]">当前设备推送状态：</span>
               <span className={isPushSubscribed ? 'text-[#4ade80] font-bold' : 'text-[#8f8b80]'}>
-                {isPushSubscribed ? '已在此设备激活 ✓' : '未开启本设备推送'}
+                {isPushSubscribed
+                  ? typeof localStorage !== 'undefined' && localStorage.getItem('cs_fcm_unreachable') === 'true'
+                    ? '已开启 (SW 系统级通知模式) ✓'
+                    : '已开启 (Web Push 云端模式) ✓'
+                  : '未开启本设备推送'}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-[#8f8b80]">账号绑定接收设备数：</span>
               <span className="text-[#e9e4d8] font-mono font-medium">
-                {serverDeviceCount} 台设备在线接收
+                {serverDeviceCount > 0 ? `${serverDeviceCount} 台设备在线接收` : 'SW 本地守护已就绪'}
               </span>
             </div>
           </div>
@@ -605,10 +656,10 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
 
             <button
               type="button"
-              disabled={testingPush || !isPushSubscribed}
+              disabled={testingPush || (!isPushSubscribed && notificationPermission !== 'granted')}
               onClick={handleTestServerPush}
               className={`py-2.5 px-3 rounded text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer border ${
-                isPushSubscribed
+                isPushSubscribed || notificationPermission === 'granted'
                   ? 'bg-[#262832] border-[#6b7cff] text-[#6b7cff] hover:bg-[#6b7cff] hover:text-white'
                   : 'bg-[#1b1c22] border-[#33363d] text-[#62605b] cursor-not-allowed'
               }`}

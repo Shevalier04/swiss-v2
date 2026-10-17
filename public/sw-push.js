@@ -16,7 +16,7 @@ self.addEventListener('push', function (event) {
     tag: data.tag || 'course-reminder-' + Date.now(),
     renotify: true,
     requireInteraction: true,
-    vibrate: [200, 100, 200],
+    vibrate: [300, 100, 300],
     data: {
       url: data.url || '/',
       timestamp: Date.now()
@@ -50,9 +50,11 @@ self.addEventListener('notificationclick', function (event) {
   );
 });
 
-// Support direct messages from webpage to trigger system notification on Android
+// Support direct messages & background delayed lockscreen notifications
 self.addEventListener('message', function (event) {
-  if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+  if (!event.data) return;
+
+  if (event.data.type === 'SHOW_NOTIFICATION') {
     const title = event.data.title || '🔔 掌上课表 · 本地系统级提醒';
     const options = {
       body: event.data.body || '开课与作业提醒',
@@ -61,12 +63,39 @@ self.addEventListener('message', function (event) {
       tag: event.data.tag || 'course-reminder-' + Date.now(),
       renotify: true,
       requireInteraction: true,
-      vibrate: [200, 100, 200],
+      vibrate: event.data.vibrate || [300, 100, 300],
       data: {
         url: event.data.url || '/',
         timestamp: Date.now()
       }
     };
     event.waitUntil(self.registration.showNotification(title, options));
+  } else if (event.data.type === 'SCHEDULE_LOCK_NOTIFICATION') {
+    const delay = event.data.delay || 5000;
+    const title = event.data.title || '🔔 掌上课表 · 系统级锁屏推送测试';
+    const body = event.data.body || '测试成功！这是一条高优先级锁屏通知。若能在黑屏锁屏看到，说明系统通知与震动已放行！';
+    const vibrate = event.data.vibrate || [300, 100, 300];
+    const url = event.data.url || '/?tab=remind';
+
+    const promise = new Promise(function (resolve) {
+      setTimeout(function () {
+        const options = {
+          body: body,
+          icon: '/icon.svg',
+          badge: '/icon.svg',
+          tag: 'delayed-lock-test-' + Date.now(),
+          renotify: true,
+          requireInteraction: true,
+          vibrate: vibrate,
+          data: {
+            url: url,
+            timestamp: Date.now()
+          }
+        };
+        self.registration.showNotification(title, options).then(resolve).catch(resolve);
+      }, delay);
+    });
+
+    event.waitUntil(promise);
   }
 });

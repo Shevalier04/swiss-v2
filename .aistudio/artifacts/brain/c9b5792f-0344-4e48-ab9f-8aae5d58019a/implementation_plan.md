@@ -1,39 +1,46 @@
-# 实施计划 - 通知全效组合降级与多重保底方案
+# 实施计划 - 国内安卓浏览器 Web Push 优雅降级与 SW 后台锁屏测试通知重构
 
-针对华为浏览器、Edge 移动端及各类内核无法启用系统原生通知权限的情况，本方案将引入**“全效组合降级保底”机制**。当检测到系统通知无法开启或被拦截时，系统将自动无缝降级，同步激活**【应用内强提醒悬浮卡片 + 手机物理震动 + Web Audio 提示音 + 手机系统日历响铃】**，确保开课与作业提醒 100% 准时触达。
+为了解决国内安卓手机（如华为、小米、OPPO、vivo 等）在 Edge/Chrome 浏览器中由于无法连接海外 FCM/WNS 推送服务器而触发 `Registration failed - push service error` 报错、且熄屏收不到通知的问题，本方案将对推送与通知流程进行深度重构。
 
-## 一、方案核心内容
+---
 
-### 1. 通知强制降级与组合保底开关 (Switch)
-- 在 `BrowserDoctorModal` 与 `ReminderTab` 中增加 **“强制开启全效通知组合降级”** 开关（持久化存储至 `cs_force_fallback_notify`）。
-- 当开启或触发降级时，即便 `Notification.permission` 为 denied 或不支持，系统也不会阻断提醒，而是直接标记为 `全效组合降级模式已激活 ✓`。
+## 一、核心重构方案
 
-### 2. 组合降级四重保底执行逻辑 (`checkReminders` & `triggerReminder`)
-当开课前（如提前 10-15 分钟）或作业临期时，若处于降级模式或系统通知不可用：
-1. **应用内悬浮横幅**：页面顶部展示倒计时弹窗与课程信息（`ReminderToast`）。
-2. **手机物理马达震动**：调用 `navigator.vibrate([300, 150, 300, 150, 400])` 触发震动。
-3. **Web Audio 提示音**：使用 Web Audio API 播放清脆开课提醒蜂鸣 (`playReminderBeep()`)。
-4. **一键同步系统日历**：在降级卡片中直接嵌入【一键同步手机系统日历】按钮，生成带 15 分钟提前闹钟的 `.ics` 文件，依靠手机原生日历实现黑屏锁屏响铃。
+### 1. 【优雅降级，屏蔽报错】推送订阅重构 (`src/utils/pushManager.ts`)
+- **错误捕获与静默降级**：
+  在 `subscribeToPushNotifications()` 调用 `pushManager.subscribe()` 时，用 `try-catch` 捕获 `push service error`、`Push service not available`、`AbortError` 等国内长连接不可达错误。
+- **屏蔽英文报错 Toast**：
+  捕获错误后，不再向用户弹出原始英文报错，而是自动记录 `localStorage.setItem('cs_sw_local_mode', 'true')` 并切换为 **“SW 系统级通知模式”**。
+- **UI 状态与测试解封**：
+  当通知权限为 `granted` 且处于 SW 本地守护模式时，将推送状态更新为 **“已开启 (SW 系统级通知模式)”**，并同步解锁下方的 **“发送锁屏测试通知 (可熄屏验证)”** 按钮。
+- **标准 VAPID 转换**：
+  确保存量的 VAPID 公钥转换严格使用标准的 `urlBase64ToUint8Array` 函数。
 
-### 3. UI 交互与测试工具升级
-- 在 `ReminderTab` 与 `BrowserDoctorModal` 中提供 **“一键实测组合降级提醒”** 按钮，点击瞬间同时发出音效、物理震动、弹出悬浮卡片。
-- 在检测面板与降级卡片中，增加针对 Edge 与华为浏览器的专用排查说明与日历快捷同步入口。
+### 2. 【SW 后台接管，5秒熄屏锁屏测试】(`public/sw-push.js` & `src/utils/pushManager.ts`)
+- **Service Worker 后台定时器处理**：
+  在 `public/sw-push.js` 中增加 `SCHEDULE_LOCK_NOTIFICATION` 监听，接收包含 `delay: 5000` 的消息，由 Service Worker 在后台通过 `setTimeout` 直接执行 `self.registration.showNotification()`。
+- **双重保底触发**：
+  - **网页侧**：点击测试时首先 Toast 提示：“请在 5 秒内按电源键锁屏/息屏，5 秒后将触发系统锁屏通知”，并启动 5 秒 `setTimeout`。
+  - **Service Worker 侧**：通过 `navigator.serviceWorker.controller.postMessage()` 向 SW 投递后台倒计时任务，即使页面在按电源键后被安卓冻结，SW 依然能在后台亮屏震动弹出通知（`vibrate: [300, 100, 300]`，`requireInteraction: true`）。
+
+### 3. 【界面与逻辑全面联动】(`src/components/ReminderTab.tsx`)
+- 整合服务端测试推送与 SW 锁屏测试逻辑：当网络可达时走 Web Push，当处于国内 SW 模式时自动触发 5 秒倒计时熄屏锁屏测试。
+- 在页面状态卡片中明确标识：“系统通知权限：已允许 (SW 系统级通知模式已就绪)”。
 
 ---
 
 ## 二、拟修改的文件列表
 
-1. `src/utils/pushManager.ts`:
-   - 增加 notification capability 的降级状态识别与 `scheduleFallbackReminder` 辅助工具。
-2. `src/components/ReminderTab.tsx`:
-   - 增加“全效组合降级卡片”，包含切换开关、组合测试按钮与一键同步日历。
-3. `src/components/BrowserDoctorModal.tsx`:
-   - 增加“强制通知降级与组合保底开关”及多重提醒实测工具。
-4. `src/App.tsx`:
-   - 优化 `checkReminders` 逻辑，确保当原生 Notification 失败或被封锁时，组合降级（横幅+震动+声音）持续稳定执行。
+1. `public/sw-push.js`:
+   - 增加 `SCHEDULE_LOCK_NOTIFICATION` 监听逻辑，处理 SW 后台延时锁屏弹窗与震动。
+2. `src/utils/pushManager.ts`:
+   - 重构 `subscribeToPushNotifications()` 异常捕获与降级逻辑；
+   - 重构 `sendLocalTestNotification()` 与 `scheduleDelayedLockScreenTest()`，实现 SW 消息与页面双轨触发。
+3. `src/components/ReminderTab.tsx`:
+   - 更新“开启锁屏系统推送”与“发送锁屏测试通知”按钮的逻辑与状态样式。
 
 ---
 
 ## 三、用户确认
 
-请确认是否按照上述计划开始执行代码编写与测试？
+请确认上述实施计划。确认后请点击 **“Proceed”**，我将开始代码编写与编译验证。
