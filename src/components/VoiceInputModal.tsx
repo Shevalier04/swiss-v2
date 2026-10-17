@@ -16,9 +16,12 @@ import {
   ChevronDown,
   ChevronUp,
   Activity,
+  ShieldCheck,
+  RefreshCw,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { parseQuickHomeworkLine, ParsedQuickHomework } from '../utils/assignmentParser';
+import { startWavRecording, WavRecorderInstance } from '../utils/wavRecorder';
 
 export interface VoiceInputModalProps {
   isOpen: boolean;
@@ -56,16 +59,13 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
   const [isDirectAdding, setIsDirectAdding] = useState(false);
   const [showMobileHelp, setShowMobileHelp] = useState(false);
   const [audioLevel, setAudioLevel] = useState<number>(0);
+  const [permissionState, setPermissionState] = useState<'prompt' | 'granted' | 'denied'>('prompt');
+  const [isRequestingPerm, setIsRequestingPerm] = useState(false);
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  const wavRecorderRef = useRef<WavRecorderInstance | null>(null);
+  const activeStreamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const webSpeechRecognitionRef = useRef<any>(null);
-
-  // AudioContext & Analyser for real-time mobile sound wave and volume detection
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
+  const volAnimRef = useRef<number | null>(null);
   const maxVolumeRef = useRef<number>(0);
 
   // Parse result for homework mode
@@ -80,32 +80,21 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
+    if (volAnimRef.current) {
+      cancelAnimationFrame(volAnimRef.current);
+      volAnimRef.current = null;
     }
-    if (analyserRef.current) {
+    if (wavRecorderRef.current) {
       try {
-        analyserRef.current.disconnect();
+        wavRecorderRef.current.cleanup();
       } catch {}
-      analyserRef.current = null;
+      wavRecorderRef.current = null;
     }
-    if (audioContextRef.current) {
+    if (activeStreamRef.current) {
       try {
-        audioContextRef.current.close();
+        activeStreamRef.current.getTracks().forEach(t => t.stop());
       } catch {}
-      audioContextRef.current = null;
-    }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch {}
-    }
-    if (webSpeechRecognitionRef.current) {
-      try {
-        webSpeechRecognitionRef.current.stop();
-      } catch {}
-      webSpeechRecognitionRef.current = null;
+      activeStreamRef.current = null;
     }
     setAudioLevel(0);
     setIsRecording(false);
@@ -121,11 +110,37 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
     }
   }, [isOpen, cleanupRecording]);
 
-  // Start recording
+  // One-click request permission
+  const handleRequestMicPermission = async () => {
+    setIsRequestingPerm(true);
+    setErrorMsg(null);
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('当前环境未开放麦克风，请确认使用 HTTPS 网址访问');
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Release immediately
+      stream.getTracks().forEach(t => t.stop());
+      setPermissionState('granted');
+      toast('麦克风权限已成功获取！');
+      // Automatically trigger recording
+      setTimeout(() => {
+        startRecording();
+      }, 300);
+    } catch (err: any) {
+      console.warn('One-click mic permission error:', err);
+      setPermissionState('denied');
+      setErrorMsg('未成功获取麦克风权限。请在浏览器地址栏点击锁形/设置图标，允许麦克风访问。');
+      setShowMobileHelp(true);
+    } finally {
+      setIsRequestingPerm(false);
+    }
+  };
+
+  // Start recording using universal 16kHz WAV recorder
   const startRecording = async () => {
     setErrorMsg(null);
     setRecognizedText('');
-    audioChunksRef.current = [];
     setRecordSeconds(0);
     maxVolumeRef.current = 0;
     setAudioLevel(0);
@@ -134,12 +149,13 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
       setErrorMsg(
         '当前浏览器不支持或未开放麦克风接口。请确保使用 HTTPS 安全网址打开，并在浏览器设置中允许麦克风权限。'
       );
+      setPermissionState('denied');
       setShowMobileHelp(true);
       return;
     }
 
     try {
-      // 1. Mobile-friendly getUserMedia constraints with fallback
+      // 1. Get audio stream with mobile noise suppression & echo cancellation
       let stream: MediaStream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -153,158 +169,36 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
 
-      // 2. Real-time Audio Visualizer & Sound Detector
-      try {
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-        if (AudioCtx) {
-          const audioCtx = new AudioCtx();
-          if (audioCtx.state === 'suspended') {
-            await audioCtx.resume();
-          }
-          const analyser = audioCtx.createAnalyser();
-          analyser.fftSize = 128;
-          analyser.smoothingTimeConstant = 0.4;
-          const source = audioCtx.createMediaStreamSource(stream);
-          source.connect(analyser);
+      activeStreamRef.current = stream;
+      setPermissionState('granted');
 
-          audioContextRef.current = audioCtx;
-          analyserRef.current = analyser;
+      // 2. Initialize pure WAV recorder (AudioContext 16kHz Mono 16-bit)
+      const recorder = await startWavRecording(stream);
+      wavRecorderRef.current = recorder;
 
-          const dataArray = new Uint8Array(analyser.frequencyBinCount);
-          const updateAudioLevel = () => {
-            if (!analyserRef.current) return;
-            analyserRef.current.getByteFrequencyData(dataArray);
-            let sum = 0;
-            for (let i = 0; i < dataArray.length; i++) {
-              sum += dataArray[i];
-            }
-            const avg = sum / dataArray.length;
-            const level = Math.min(100, Math.round((avg / 128) * 100));
-            setAudioLevel(level);
-            if (level > maxVolumeRef.current) {
-              maxVolumeRef.current = level;
-            }
-            animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
-          };
-          updateAudioLevel();
+      // 3. Monitor live volume for soundwave visualizer
+      const pollVolume = () => {
+        if (!wavRecorderRef.current) return;
+        const vol = wavRecorderRef.current.getVolumeLevel();
+        setAudioLevel(vol);
+        if (vol > maxVolumeRef.current) {
+          maxVolumeRef.current = vol;
         }
-      } catch (audioErr) {
-        console.warn('AudioContext visualizer not supported, continuing recording:', audioErr);
-      }
-
-      // 3. Multi-platform MIME type detection (WebM, MP4, AAC, OGG)
-      const candidateMimes = [
-        'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/mp4',
-        'audio/aac',
-        'audio/ogg;codecs=opus',
-        'audio/ogg',
-        'audio/wav',
-      ];
-      let selectedMime = '';
-      if (typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function') {
-        for (const candidate of candidateMimes) {
-          if (MediaRecorder.isTypeSupported(candidate)) {
-            selectedMime = candidate;
-            break;
-          }
-        }
-      }
-
-      let mediaRecorder: MediaRecorder;
-      try {
-        mediaRecorder = selectedMime
-          ? new MediaRecorder(stream, { mimeType: selectedMime })
-          : new MediaRecorder(stream);
-      } catch {
-        // Fallback without options for strict WebKit/iOS Safari
-        mediaRecorder = new MediaRecorder(stream);
-      }
-
-      const effectiveMime = mediaRecorder.mimeType || selectedMime || 'audio/webm';
-      mediaRecorderRef.current = mediaRecorder;
-
-      mediaRecorder.ondataavailable = e => {
-        if (e.data && e.data.size > 0) {
-          audioChunksRef.current.push(e.data);
-        }
+        volAnimRef.current = requestAnimationFrame(pollVolume);
       };
+      pollVolume();
 
-      mediaRecorder.onstop = async () => {
-        // Release audio visualizer
-        if (animationFrameRef.current) {
-          cancelAnimationFrame(animationFrameRef.current);
-          animationFrameRef.current = null;
-        }
-        if (audioContextRef.current) {
-          try {
-            audioContextRef.current.close();
-          } catch {}
-          audioContextRef.current = null;
-        }
-        setAudioLevel(0);
-
-        // Stop stream hardware tracks
-        try {
-          stream.getTracks().forEach(track => track.stop());
-        } catch {}
-
-        if (audioChunksRef.current.length === 0) {
-          setErrorMsg('未接收到录音数据，请靠近手机麦克风重试');
-          return;
-        }
-
-        const audioBlob = new Blob(audioChunksRef.current, { type: effectiveMime });
-        if (audioBlob.size > 0) {
-          // If absolute silence was recorded on mobile, alert user
-          if (maxVolumeRef.current < 2 && recordSeconds >= 1) {
-            console.warn('Microphone input was silent during recording');
-          }
-          await handleTranscribeBlob(audioBlob, effectiveMime);
-        } else {
-          setErrorMsg('录音内容为空，请靠近麦克风重新说话');
-        }
-      };
-
-      // Use 500ms chunking for mobile WebView stability
-      mediaRecorder.start(500);
       setIsRecording(true);
 
-      // Start timer
+      // 4. Start timer
       timerRef.current = setInterval(() => {
         setRecordSeconds(sec => sec + 1);
       }, 1000);
-
-      // Optional Web Speech API for desktop Chrome live text preview
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        try {
-          const recognition = new SpeechRecognition();
-          recognition.lang = 'zh-CN';
-          recognition.continuous = true;
-          recognition.interimResults = true;
-          recognition.onresult = (event: any) => {
-            let interimTranscript = '';
-            for (let i = event.resultIndex; i < event.results.length; ++i) {
-              interimTranscript += event.results[i][0].transcript;
-            }
-            if (interimTranscript) {
-              setRecognizedText(interimTranscript);
-            }
-          };
-          recognition.onerror = () => {
-            // Mobile devices often throw network error for Google speech services in domestic networks
-          };
-          recognition.start();
-          webSpeechRecognitionRef.current = recognition;
-        } catch {}
-      }
     } catch (err: any) {
-      console.error('Microphone access error:', err);
+      console.error('Microphone start error:', err);
+      setPermissionState('denied');
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setErrorMsg('麦克风权限被拒绝。请在手机浏览器地址栏锁头图标中开启麦克风权限。');
+        setErrorMsg('麦克风权限被拒绝，请点击下方“一键获取麦克风权限”按钮重试');
       } else {
         setErrorMsg(`无法启动麦克风: ${err.message || '未知错误'}`);
       }
@@ -312,83 +206,65 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
     }
   };
 
-  // Stop recording and trigger transcribe
-  const stopRecording = () => {
+  // Stop recording and send 16kHz WAV to Cloud Dual-Engine
+  const stopRecording = async () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    if (webSpeechRecognitionRef.current) {
-      try {
-        webSpeechRecognitionRef.current.stop();
-      } catch {}
+    if (volAnimRef.current) {
+      cancelAnimationFrame(volAnimRef.current);
+      volAnimRef.current = null;
     }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      try {
-        if (typeof mediaRecorderRef.current.requestData === 'function') {
-          mediaRecorderRef.current.requestData();
-        }
-      } catch {}
-      mediaRecorderRef.current.stop();
-    }
-    setIsRecording(false);
-  };
 
-  // Transcribe recorded blob via Gemini Multimodal Transcribe
-  const handleTranscribeBlob = async (blob: Blob, mimeType: string) => {
+    setIsRecording(false);
+    setAudioLevel(0);
+
+    const recorder = wavRecorderRef.current;
+    if (!recorder) return;
+
     setIsTranscribing(true);
     setErrorMsg(null);
 
     try {
-      // Clean mimeType to base type (remove ;codecs=...)
-      const baseMime = mimeType.split(';')[0].trim().toLowerCase() || 'audio/webm';
+      const { blob, base64, duration } = await recorder.stop();
+      wavRecorderRef.current = null;
 
-      // Convert blob to base64
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onloadend = () => {
-          const res = reader.result as string;
-          resolve(res);
-        };
-        reader.onerror = reject;
-      });
-      reader.readAsDataURL(blob);
+      if (activeStreamRef.current) {
+        try {
+          activeStreamRef.current.getTracks().forEach(t => t.stop());
+        } catch {}
+        activeStreamRef.current = null;
+      }
 
-      const base64Data = await base64Promise;
+      if (duration < 0.6 || blob.size < 400) {
+        setErrorMsg('录音时间太短，请靠近麦克风清晰说话至少 1 秒后再点击结束');
+        setIsTranscribing(false);
+        return;
+      }
 
       const prompt =
         mode === 'homework'
           ? '请将这段中文语音内容转录为纯文本，准确保留课程名称（如高数、计网、线代、界面设计等）、作业具体内容（如课后习题、实验报告、P32第1题等）和截止时间（如明天交、周五晚前、10月25日截止等）。直接输出纯文本，不要任何额外解说。'
           : '请将这段语音内容原样转录为待办任务纯文本，直接输出文本内容，不要包含多余解说。';
 
-      const result = await api.transcribeAudio(base64Data, baseMime, prompt);
+      // Send pristine 16kHz audio/wav to backend dual-engine
+      const result = await api.transcribeAudio(base64, 'audio/wav', prompt);
       if (result && result.text && result.text.trim()) {
         setRecognizedText(result.text.trim());
         toast('语音识别成功！');
-      } else if (recognizedText.trim()) {
-        toast('已采用实时语音识别结果');
       } else if (result?.fallbackToLocal) {
-        setErrorMsg('云端引擎未检测到清晰发音。请靠近手机麦克风大声重试，或直接点击下方预设/打字。');
+        setErrorMsg('语音已录制完成。若发音较轻，请靠近手机麦克风大声重试，或直接点击下方预设/输入。');
       } else {
-        if (maxVolumeRef.current < 2) {
-          setErrorMsg('未检测到声音信号，请检查手机是否开启静音或麦克风权限是否正常。');
-          setShowMobileHelp(true);
-        } else {
-          setErrorMsg('未检测到清晰的语音内容，请靠近麦克风重试');
-        }
+        setErrorMsg('未识别到清晰文字，请靠近手机麦克风重新说话');
       }
     } catch (err: any) {
-      console.warn('Audio transcribe failed, checking existing live text:', err);
-      if (recognizedText.trim()) {
-        toast('已采用实时捕获语音文本');
-      } else {
-        const friendlyMsg =
-          err?.message === 'BACKEND_HTML_FALLBACK' || err?.isFallback
-            ? '云端语音服务暂未就绪，请直接打字输入或稍后重试。'
-            : (err?.message || '语音转录遇到问题，请重试或直接打字输入');
-        setErrorMsg(friendlyMsg);
-        setShowMobileHelp(true);
-      }
+      console.error('WAV transcription error:', err);
+      const friendlyMsg =
+        err?.message === 'BACKEND_HTML_FALLBACK' || err?.isFallback
+          ? '云端语音服务暂未就绪，请直接打字输入或稍后重试。'
+          : (err?.message || '语音转录遇到问题，请重试或直接打字输入');
+      setErrorMsg(friendlyMsg);
     } finally {
       setIsTranscribing(false);
     }
@@ -473,7 +349,7 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
                 {mode === 'homework' ? 'AI 语音极速添加作业' : 'AI 语音极速备忘待办'}
               </h3>
               <p className="text-[11px] text-[#8f8b80]">
-                支持移动端/电脑端麦克风录音与高精度智能转写
+                通用 16kHz 无损 WAV 音频 ｜ 适配华为/鸿蒙/iOS 全移动端
               </p>
             </div>
           </div>
@@ -509,7 +385,7 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
                       <div
                         key={idx}
                         className={`w-1 rounded-full transition-all duration-75 ${
-                          audioLevel > 5 ? 'bg-red-400' : 'bg-[#3e4252]'
+                          audioLevel > 4 ? 'bg-red-400' : 'bg-[#3e4252]'
                         }`}
                         style={{ height: `${barHeight}px` }}
                       />
@@ -538,12 +414,12 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
                 <>
                   <div className="text-red-400 font-bold text-sm flex items-center justify-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                    正在聆听说话中... ({formatSeconds(recordSeconds)})
+                    正在录音收音中... ({formatSeconds(recordSeconds)})
                   </div>
                   <div className="text-xs text-[#8f8b80] flex items-center justify-center gap-1">
-                    <Activity className={`w-3.5 h-3.5 ${audioLevel > 5 ? 'text-red-400' : 'text-[#63605a]'}`} />
+                    <Activity className={`w-3.5 h-3.5 ${audioLevel > 4 ? 'text-red-400' : 'text-[#63605a]'}`} />
                     <span>
-                      {audioLevel > 5 ? '已捕捉到声音波动，请继续说' : '请靠近手机麦克风清晰说话'}
+                      {audioLevel > 4 ? '已灵敏感应到声波，请清晰说出作业' : '请靠近手机底部麦克风说话'}
                     </span>
                   </div>
                 </>
@@ -551,10 +427,10 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
                 <>
                   <div className="text-[#6b7cff] font-bold text-sm flex items-center justify-center gap-1.5 font-mono">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Gemini AI 正在高精度转录音频...
+                    云端双引擎智能转写中...
                   </div>
                   <p className="text-xs text-[#8f8b80]">
-                    基于多模态大模型智能提炼课程、内容与截止日期
+                    标准 16kHz 无损 WAV 音频 ｜ 自动提取课程与截止时间
                   </p>
                 </>
               ) : recognizedText ? (
@@ -590,7 +466,7 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
                   className="px-5 py-2 bg-red-500 hover:bg-red-600 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-md active:scale-95"
                 >
                   <Square className="w-3.5 h-3.5 fill-current" />
-                  <span>说完了，结束录音</span>
+                  <span>说完了，结束录音并识别</span>
                 </button>
               ) : (
                 <button
@@ -606,6 +482,29 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
             </div>
           </div>
 
+          {/* One-Click Permission Request Button if permission was denied */}
+          {permissionState === 'denied' && (
+            <div className="p-3 bg-[#6b7cff]/15 border border-[#6b7cff]/50 rounded-lg space-y-2">
+              <div className="flex items-center gap-2 text-[#8ea4ff] font-bold text-xs">
+                <ShieldCheck className="w-4 h-4 text-[#6b7cff] shrink-0" />
+                <span>麦克风权限未允许，可一键重新唤起系统授权</span>
+              </div>
+              <button
+                type="button"
+                disabled={isRequestingPerm}
+                onClick={handleRequestMicPermission}
+                className="w-full py-2.5 bg-[#6b7cff] hover:bg-[#5868e6] text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-md shadow-[#6b7cff]/20 disabled:opacity-50"
+              >
+                {isRequestingPerm ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                )}
+                <span>{isRequestingPerm ? '正在唤起手机权限...' : '一键唤起麦克风授权'}</span>
+              </button>
+            </div>
+          )}
+
           {/* Error notice if any */}
           {errorMsg && (
             <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-300 flex items-start gap-2">
@@ -618,51 +517,26 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
                   className="text-[#6b7cff] hover:underline flex items-center gap-1 text-[11px] font-bold cursor-pointer"
                 >
                   <Smartphone className="w-3 h-3" />
-                  <span>查看手机麦克风权限排查指引</span>
+                  <span>系统未弹出授权？查看手动排查指引</span>
                 </button>
               </div>
             </div>
           )}
 
-          {/* Mobile Microphone Troubleshooting Accordion */}
-          <div className="bg-[#16181d] border border-[#2e313b] rounded-lg overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setShowMobileHelp(!showMobileHelp)}
-              className="w-full px-3 py-2 text-xs flex items-center justify-between text-[#8f8b80] hover:text-[#e9e4d8] transition-colors cursor-pointer"
-            >
-              <div className="flex items-center gap-1.5">
+          {/* Streamlined Mobile Microphone Troubleshooting Accordion */}
+          {showMobileHelp && (
+            <div className="bg-[#16181d] border border-[#2e313b] rounded-lg p-3 text-[11.5px] text-[#a8a399] space-y-2">
+              <div className="font-bold text-[#e9e4d8] flex items-center gap-1.5">
                 <Smartphone className="w-3.5 h-3.5 text-[#6b7cff]" />
-                <span className="font-semibold">📱 手机端无法录音？常见排查与解决方法</span>
+                <span>各手机浏览器麦克风快速解封：</span>
               </div>
-              {showMobileHelp ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
-
-            {showMobileHelp && (
-              <div className="px-3 pb-3 pt-1 text-[11.5px] text-[#a8a399] border-t border-[#262832] space-y-2">
-                <div className="bg-[#121317] p-2.5 rounded border border-[#262832] space-y-1">
-                  <div className="text-[#e9e4d8] font-bold">1. 华为 / 鸿蒙浏览器权限开启</div>
-                  <p className="text-[#8f8b80]">
-                    点击网址栏左侧「锁头🔒 / 盾牌」图标 ➔ 【网站权限/网站设置】 ➔ 将<strong>【麦克风】</strong>设为<strong>【允许】</strong>。
-                  </p>
-                </div>
-
-                <div className="bg-[#121317] p-2.5 rounded border border-[#262832] space-y-1">
-                  <div className="text-[#e9e4d8] font-bold">2. 苹果 iPhone / Safari 麦克风设置</div>
-                  <p className="text-[#8f8b80]">
-                    进入手机【设置】 ➔ 【Safari 浏览器】 ➔ 向下找到【麦克风】 ➔ 设为<strong>【允许】</strong>；如添加到桌面打开，在系统设置中允许本应用麦克风。
-                  </p>
-                </div>
-
-                <div className="bg-[#121317] p-2.5 rounded border border-[#262832] space-y-1">
-                  <div className="text-[#e9e4d8] font-bold">3. 微信 / QQ 内置浏览器</div>
-                  <p className="text-[#8f8b80]">
-                    微信内置浏览器限制网页录音权限，请点击右上角【···】选择<strong>【在浏览器打开】</strong>（推荐使用系统自带浏览器、Chrome 或 Edge）。
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
+              <p className="text-[#8f8b80] leading-relaxed">
+                • <strong>华为/鸿蒙浏览器</strong>：在最上方网址栏点击「锁头🔒 / 盾牌」➔ 点击「网站设置」➔ 开启「麦克风」允许。<br />
+                • <strong>苹果 iPhone (Safari)</strong>：手机「设置」➔「Safari 浏览器」➔「麦克风」切换为「允许」。<br />
+                • <strong>微信/QQ</strong>：请点击右上角【···】选择【在浏览器打开】。
+              </p>
+            </div>
+          )}
 
           {/* Recognized Text Box */}
           <div className="space-y-1.5">
@@ -688,7 +562,7 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
               onChange={e => setRecognizedText(e.target.value)}
               placeholder={
                 isRecording
-                  ? '正在聆听并实时捕捉语音文字中...'
+                  ? '正在录音收音中，说完点击“说完了，结束录音”...'
                   : '语音转录内容将在此显示，您可以随时直接在此输入或修改'
               }
               rows={3}

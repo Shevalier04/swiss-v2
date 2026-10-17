@@ -8,9 +8,11 @@ import {
   RefreshCw,
   CheckCircle,
   AlertTriangle,
-  ExternalLink,
-  ChevronRight,
-  Info,
+  ChevronDown,
+  ChevronUp,
+  ShieldCheck,
+  Bell,
+  Sparkles,
 } from 'lucide-react';
 import { recheckNotificationPermission, NotificationCapability } from '../utils/pushManager';
 
@@ -30,7 +32,9 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
   toast,
 }) => {
   const [activeTab, setActiveTab] = useState<BrowserType>('huawei');
+  const [isRequesting, setIsRequesting] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
+  const [showManualSteps, setShowManualSteps] = useState(false);
   const [checkResult, setCheckResult] = useState<{
     status: NotificationPermission | 'unsupported';
     message: string;
@@ -53,6 +57,52 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Primary Action: One-Click Request Native Permission
+  const handleOneClickRequest = async () => {
+    setIsRequesting(true);
+    setCheckResult(null);
+
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      setIsRequesting(false);
+      setCheckResult({
+        status: 'unsupported',
+        message: '当前浏览器不支持系统通知，建议使用 Chrome / Edge 或将应用添加到主屏幕',
+      });
+      setShowManualSteps(true);
+      return;
+    }
+
+    try {
+      const res = await Notification.requestPermission();
+      if (res === 'granted') {
+        toast('🎉 系统通知权限已成功获取！');
+        onPermissionGranted();
+        setTimeout(() => {
+          onClose();
+        }, 800);
+      } else {
+        setCheckResult({
+          status: res,
+          message:
+            res === 'denied'
+              ? '浏览器曾被设为拦截通知。如未看到系统弹窗，请在地址栏点击锁形图标设为“允许”。'
+              : '授权未完成，请再次点击并选择“允许”。',
+        });
+        setShowManualSteps(true);
+      }
+    } catch (err: any) {
+      console.warn('Native notification request error:', err);
+      setCheckResult({
+        status: 'denied',
+        message: err.message || '申请权限遇到异常，请查看下方手动解除指引',
+      });
+      setShowManualSteps(true);
+    } finally {
+      setIsRequesting(false);
+    }
+  };
+
+  // Secondary Action: Re-check current permission
   const handleRecheck = async () => {
     setIsChecking(true);
     setCheckResult(null);
@@ -69,7 +119,7 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
         onPermissionGranted();
         setTimeout(() => {
           onClose();
-        }, 1200);
+        }, 800);
       }
     } catch (err: any) {
       setCheckResult({
@@ -83,19 +133,19 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-4 backdrop-blur-sm animate-fade-in select-none">
-      <div className="bg-[#1f222a] border-2 border-[#ff6b57] rounded-xl max-w-lg w-full max-h-[92vh] flex flex-col shadow-2xl text-[#e9e4d8] overflow-hidden">
+      <div className="bg-[#1f222a] border-2 border-[#6b7cff] rounded-xl max-w-lg w-full max-h-[92vh] flex flex-col shadow-2xl text-[#e9e4d8] overflow-hidden">
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-[#333644] flex items-center justify-between bg-[#191b22]">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#ff6b57]/20 border border-[#ff6b57]/40 flex items-center justify-center text-[#ff6b57]">
-              <ShieldAlert className="w-5 h-5" />
+            <div className="w-8 h-8 rounded-lg bg-[#6b7cff]/20 border border-[#6b7cff]/40 flex items-center justify-center text-[#6b7cff]">
+              <Bell className="w-5 h-5" />
             </div>
             <div>
               <h3 className="font-editorial font-bold text-base sm:text-lg text-[#e9e4d8] leading-tight">
-                手机浏览器通知拦截解除指引
+                系统通知权限开启
               </h3>
               <p className="text-[11px] text-[#8f8b80] mt-0.5">
-                检测到通知权限处于【被拒绝 / 拦截】状态，请依指引解除
+                一键唤起手机系统原生授权 ｜ 锁屏与课前提醒即达
               </p>
             </div>
           </div>
@@ -108,226 +158,40 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="grid grid-cols-4 bg-[#16181e] border-b border-[#2e313d] text-xs font-semibold">
-          <button
-            type="button"
-            onClick={() => setActiveTab('huawei')}
-            className={`py-3 px-1 text-center flex flex-col sm:flex-row items-center justify-center gap-1 transition-all cursor-pointer border-b-2 ${
-              activeTab === 'huawei'
-                ? 'border-[#ff6b57] text-[#ff6b57] bg-[#222530] font-bold'
-                : 'border-transparent text-[#8f8b80] hover:text-[#e9e4d8]'
-            }`}
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span>华为/鸿蒙</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('chrome')}
-            className={`py-3 px-1 text-center flex flex-col sm:flex-row items-center justify-center gap-1 transition-all cursor-pointer border-b-2 ${
-              activeTab === 'chrome'
-                ? 'border-[#ff6b57] text-[#ff6b57] bg-[#222530] font-bold'
-                : 'border-transparent text-[#8f8b80] hover:text-[#e9e4d8]'
-            }`}
-          >
-            <Globe className="w-3.5 h-3.5" />
-            <span>Chrome/Edge</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('ios')}
-            className={`py-3 px-1 text-center flex flex-col sm:flex-row items-center justify-center gap-1 transition-all cursor-pointer border-b-2 ${
-              activeTab === 'ios'
-                ? 'border-[#ff6b57] text-[#ff6b57] bg-[#222530] font-bold'
-                : 'border-transparent text-[#8f8b80] hover:text-[#e9e4d8]'
-            }`}
-          >
-            <Apple className="w-3.5 h-3.5" />
-            <span>iOS Safari</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('domestic')}
-            className={`py-3 px-1 text-center flex flex-col sm:flex-row items-center justify-center gap-1 transition-all cursor-pointer border-b-2 ${
-              activeTab === 'domestic'
-                ? 'border-[#ff6b57] text-[#ff6b57] bg-[#222530] font-bold'
-                : 'border-transparent text-[#8f8b80] hover:text-[#e9e4d8]'
-            }`}
-          >
-            <MessageCircle className="w-3.5 h-3.5" />
-            <span>微信/其他</span>
-          </button>
-        </div>
-
-        {/* Tab Content (Scrollable) */}
-        <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1 text-xs text-[#a8a399] leading-relaxed">
-          {activeTab === 'huawei' && (
-            <div className="space-y-3">
-              <div className="bg-[#16181d] p-3.5 rounded-lg border border-[#2e313b] space-y-2">
-                <div className="font-bold text-[#e9e4d8] flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-[#ff6b57] text-white text-[11px] font-bold flex items-center justify-center">
-                    1
-                  </span>
-                  <span>最快方式：点击地址栏「锁头 🔒」或「盾牌」图标</span>
-                </div>
-                <p className="text-[#8f8b80] pl-7 text-[11.5px]">
-                  在华为浏览器<strong>最上方的网址栏左侧或右侧</strong>，轻触小锁形图标 ➔ 选择<strong>【网站设置】</strong>或<strong>【权限管理】</strong> ➔ 找到<strong>【通知】</strong>，将其从“禁止/询问”更改为<strong>【允许】</strong>。
-                </p>
-              </div>
-
-              <div className="bg-[#16181d] p-3.5 rounded-lg border border-[#2e313b] space-y-2">
-                <div className="font-bold text-[#e9e4d8] flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-[#6b7cff] text-white text-[11px] font-bold flex items-center justify-center">
-                    2
-                  </span>
-                  <span>备用方式：手机系统设置 ➔ 开启华为浏览器通知</span>
-                </div>
-                <p className="text-[#8f8b80] pl-7 text-[11.5px]">
-                  打开手机<strong>【设置】</strong> ➔ <strong>【应用和服务】</strong> ➔ <strong>【应用管理】</strong> ➔ 找到<strong>“华为浏览器”</strong> ➔ 点击<strong>【通知管理】</strong> ➔ 开启<strong>【允许通知】</strong>，并勾选<strong>【横幅通知】</strong>与<strong>【锁屏通知】</strong>。
-                </p>
-              </div>
-
-              <div className="bg-[#16181d] p-3.5 rounded-lg border border-[#2e313b] space-y-2">
-                <div className="font-bold text-[#e9e4d8] flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-[#4ade80] text-[#1d1f24] text-[11px] font-bold flex items-center justify-center">
-                    3
-                  </span>
-                  <span>推荐终极体验：点击菜单「添加到桌面」</span>
-                </div>
-                <p className="text-[#8f8b80] pl-7 text-[11.5px]">
-                  点击华为浏览器底部三道杠菜单 ➔ 选择<strong>【添加到桌面】</strong>。添加到桌面后即拥有专属独立 App 容器，通知常驻且不容易被系统省电机制杀掉。
-                </p>
-              </div>
+        {/* Body Content */}
+        <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1 text-xs text-[#a8a399] leading-relaxed custom-scrollbar">
+          {/* Top Primary One-Click Card */}
+          <div className="bg-[#16181d] border border-[#2e313b] p-4 rounded-xl text-center space-y-3">
+            <div className="w-12 h-12 rounded-full bg-[#6b7cff]/20 border border-[#6b7cff] flex items-center justify-center text-[#6b7cff] mx-auto shadow-lg shadow-[#6b7cff]/15">
+              <Sparkles className="w-6 h-6 animate-pulse" />
             </div>
-          )}
 
-          {activeTab === 'chrome' && (
-            <div className="space-y-3">
-              <div className="bg-[#16181d] p-3.5 rounded-lg border border-[#2e313b] space-y-2">
-                <div className="font-bold text-[#e9e4d8] flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-[#ff6b57] text-white text-[11px] font-bold flex items-center justify-center">
-                    1
-                  </span>
-                  <span>点击地址栏左侧「页面设置 🎚️」或「锁头 🔒」</span>
-                </div>
-                <p className="text-[#8f8b80] pl-7 text-[11.5px]">
-                  在浏览器顶部地址栏最左侧，点击小调节器/锁头图标 ➔ 点击<strong>【权限 (Permissions)】</strong> ➔ 找到<strong>【通知】</strong>并将开关打开为<strong>【允许】</strong>。
-                </p>
-              </div>
-
-              <div className="bg-[#16181d] p-3.5 rounded-lg border border-[#2e313b] space-y-2">
-                <div className="font-bold text-[#e9e4d8] flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-[#6b7cff] text-white text-[11px] font-bold flex items-center justify-center">
-                    2
-                  </span>
-                  <span>进入浏览器【设置 ➔ 网站设置 ➔ 通知】</span>
-                </div>
-                <p className="text-[#8f8b80] pl-7 text-[11.5px]">
-                  点击右上角<strong>【三个点】菜单</strong> ➔ <strong>【设置】</strong> ➔ 找到<strong>【网站设置】</strong> ➔ <strong>【通知】</strong> ➔ 在“已禁止”列表中找到当前网站，点击进入切换为<strong>【允许】</strong>。
-                </p>
-              </div>
-
-              <div className="bg-[#16181d] p-3.5 rounded-lg border border-[#2e313b] space-y-2">
-                <div className="font-bold text-[#e9e4d8] flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-[#4ade80] text-[#1d1f24] text-[11px] font-bold flex items-center justify-center">
-                    3
-                  </span>
-                  <span>确认手机安卓系统未关闭 Chrome/Edge 通知</span>
-                </div>
-                <p className="text-[#8f8b80] pl-7 text-[11.5px]">
-                  长按手机桌面的 Chrome 或 Edge 图标 ➔ 点击<strong>【应用信息 ℹ️】</strong> ➔ <strong>【通知管理】</strong> ➔ 确保<strong>“允许通知”</strong>处于开启状态。
-                </p>
-              </div>
+            <div className="space-y-1">
+              <h4 className="font-bold text-sm text-[#e9e4d8]">
+                点击下方按钮，直接在手机弹出授权
+              </h4>
+              <p className="text-[11.5px] text-[#8f8b80]">
+                系统将直接弹出「掌上课表 想给您发送通知」，点击<strong>【允许】</strong>即可瞬间开启！
+              </p>
             </div>
-          )}
 
-          {activeTab === 'ios' && (
-            <div className="space-y-3">
-              <div className="p-3 bg-[#6b7cff]/10 border border-[#6b7cff]/40 rounded-lg text-[#8ea4ff] text-[11px] flex items-start gap-2">
-                <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>
-                  苹果公司 iOS 规范要求：Web 网页通知<strong>必须先将网页「添加到主屏幕」</strong>，才能在系统锁屏和通知中心接收推送通知（需 iOS 16.4 及以上）。
-                </span>
-              </div>
+            {/* Direct One-Click Button */}
+            <button
+              type="button"
+              disabled={isRequesting}
+              onClick={handleOneClickRequest}
+              className="w-full py-3 bg-[#6b7cff] hover:bg-[#5868e6] text-white font-bold text-sm tracking-wide rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-[#6b7cff]/25 active:scale-98 disabled:opacity-50"
+            >
+              {isRequesting ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <ShieldCheck className="w-4 h-4" />
+              )}
+              <span>{isRequesting ? '正在唤起手机授权...' : '一键获取系统通知权限'}</span>
+            </button>
+          </div>
 
-              <div className="bg-[#16181d] p-3.5 rounded-lg border border-[#2e313b] space-y-2">
-                <div className="font-bold text-[#e9e4d8] flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-[#ff6b57] text-white text-[11px] font-bold flex items-center justify-center">
-                    1
-                  </span>
-                  <span>点击 Safari 底部居中的「分享按钮 📤」</span>
-                </div>
-                <p className="text-[#8f8b80] pl-7 text-[11.5px]">
-                  在 iPhone / iPad 的 Safari 浏览器底部栏中间，点击向上箭头的<strong>【分享】</strong>图标。
-                </p>
-              </div>
-
-              <div className="bg-[#16181d] p-3.5 rounded-lg border border-[#2e313b] space-y-2">
-                <div className="font-bold text-[#e9e4d8] flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-[#6b7cff] text-white text-[11px] font-bold flex items-center justify-center">
-                    2
-                  </span>
-                  <span>向下滑动选择「添加到主屏幕 ➕」</span>
-                </div>
-                <p className="text-[#8f8b80] pl-7 text-[11.5px]">
-                  在弹出菜单中向下滚动，选择<strong>【添加到主屏幕】</strong>，右上角点击<strong>【添加】</strong>。
-                </p>
-              </div>
-
-              <div className="bg-[#16181d] p-3.5 rounded-lg border border-[#2e313b] space-y-2">
-                <div className="font-bold text-[#e9e4d8] flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-[#4ade80] text-[#1d1f24] text-[11px] font-bold flex items-center justify-center">
-                    3
-                  </span>
-                  <span>从桌面打开「掌上课表」App 开启通知</span>
-                </div>
-                <p className="text-[#8f8b80] pl-7 text-[11.5px]">
-                  回到手机桌面，点击刚刚添加的<strong>“掌上课表”</strong>图标打开。进入本提醒页面后点击开启，iOS 将自动弹出<strong>“掌上课表 想给您发送通知”</strong>，点击【允许】即可！
-                </p>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'domestic' && (
-            <div className="space-y-3">
-              <div className="p-3 bg-[#ff6b57]/10 border border-[#ff6b57]/40 rounded-lg text-[#ff8f80] text-[11px] flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>
-                  <strong>微信与 QQ 内置浏览器受平台限制，无法直接弹出系统级锁屏通知！</strong>建议按照下方指引跳转至独立浏览器打开。
-                </span>
-              </div>
-
-              <div className="bg-[#16181d] p-3.5 rounded-lg border border-[#2e313b] space-y-2">
-                <div className="font-bold text-[#e9e4d8] flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-[#ff6b57] text-white text-[11px] font-bold flex items-center justify-center">
-                    1
-                  </span>
-                  <span>微信 / QQ 中：选择在默认浏览器打开</span>
-                </div>
-                <p className="text-[#8f8b80] pl-7 text-[11.5px]">
-                  点击右上角<strong>【···】</strong>三个点 ➔ 选择<strong>【在浏览器打开】</strong>（推荐选择手机内置浏览器、Chrome 或 Edge）。
-                </p>
-              </div>
-
-              <div className="bg-[#16181d] p-3.5 rounded-lg border border-[#2e313b] space-y-2">
-                <div className="font-bold text-[#e9e4d8] flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-[#6b7cff] text-white text-[11px] font-bold flex items-center justify-center">
-                    2
-                  </span>
-                  <span>小米 / OPPO / vivo / 夸克 / UC 浏览器</span>
-                </div>
-                <p className="text-[#8f8b80] pl-7 text-[11.5px]">
-                  在地址栏左侧或底部菜单中点击【设置】/【网站权限】 ➔ 找到<strong>【通知】</strong>权限更改为【允许】。如提示被手机管家拦截，可在手机【设置 ➔ 通知与状态栏】中开启该浏览器的通知权限。
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Detection Result Box if checked */}
+          {/* Detection Result Box if checked or errored */}
           {checkResult && (
             <div
               className={`p-3 rounded-lg border text-xs flex items-center gap-2.5 ${
@@ -344,36 +208,111 @@ export const NotificationGuideModal: React.FC<NotificationGuideModalProps> = ({
               <div className="flex-1 font-medium">{checkResult.message}</div>
             </div>
           )}
+
+          {/* Collapsible Manual Guide for users who previously chose "Never Allow" */}
+          <div className="border border-[#2e313b] rounded-lg overflow-hidden bg-[#16181d]">
+            <button
+              type="button"
+              onClick={() => setShowManualSteps(!showManualSteps)}
+              className="w-full p-3 text-xs flex items-center justify-between text-[#8f8b80] hover:text-[#e9e4d8] transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-1.5">
+                <Smartphone className="w-3.5 h-3.5 text-[#6b7cff]" />
+                <span className="font-semibold">点击后没有弹出授权窗口？查看极简设置</span>
+              </div>
+              {showManualSteps ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+
+            {showManualSteps && (
+              <div className="p-3 border-t border-[#2e313b] space-y-3">
+                {/* Compact Browser Tabs */}
+                <div className="grid grid-cols-4 bg-[#121317] rounded p-0.5 text-[11px] font-semibold border border-[#262832]">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('huawei')}
+                    className={`py-1.5 rounded transition-colors cursor-pointer ${
+                      activeTab === 'huawei' ? 'bg-[#6b7cff] text-white font-bold' : 'text-[#8f8b80]'
+                    }`}
+                  >
+                    华为/鸿蒙
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('chrome')}
+                    className={`py-1.5 rounded transition-colors cursor-pointer ${
+                      activeTab === 'chrome' ? 'bg-[#6b7cff] text-white font-bold' : 'text-[#8f8b80]'
+                    }`}
+                  >
+                    Chrome/Edge
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('ios')}
+                    className={`py-1.5 rounded transition-colors cursor-pointer ${
+                      activeTab === 'ios' ? 'bg-[#6b7cff] text-white font-bold' : 'text-[#8f8b80]'
+                    }`}
+                  >
+                    iOS Safari
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('domestic')}
+                    className={`py-1.5 rounded transition-colors cursor-pointer ${
+                      activeTab === 'domestic' ? 'bg-[#6b7cff] text-white font-bold' : 'text-[#8f8b80]'
+                    }`}
+                  >
+                    微信/其他
+                  </button>
+                </div>
+
+                {/* Tab Body */}
+                <div className="text-[11.5px] leading-relaxed text-[#a8a399] bg-[#121317] p-3 rounded border border-[#262832]">
+                  {activeTab === 'huawei' && (
+                    <p>
+                      在华为浏览器<strong>最上方网址栏点击「锁头🔒 / 盾牌」</strong> ➔ 点击<strong>【网站设置】</strong> ➔ 将<strong>【通知】</strong>由禁止修改为<strong>【允许】</strong>即可。
+                    </p>
+                  )}
+                  {activeTab === 'chrome' && (
+                    <p>
+                      在网址栏最左侧点击<strong>「页面设置/锁头 🎚️」</strong> ➔ 点击<strong>【权限】</strong> ➔ 开启<strong>【通知】</strong>开关。
+                    </p>
+                  )}
+                  {activeTab === 'ios' && (
+                    <p>
+                      苹果 iPhone 规范要求：请点击 Safari 底部<strong>【分享按钮 📤】</strong> ➔ 选择<strong>【添加到主屏幕 ➕】</strong>，随后从桌面打开即可正常接收系统通知。
+                    </p>
+                  )}
+                  {activeTab === 'domestic' && (
+                    <p>
+                      微信/QQ 内置浏览器限制系统通知。请点击右上角<strong>【···】</strong>选择<strong>【在浏览器打开】</strong>（推荐使用 Chrome 或 Edge）。
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isChecking}
+                  onClick={handleRecheck}
+                  className="w-full py-2 bg-[#252834] hover:bg-[#343849] border border-[#3e4252] text-[#e9e4d8] text-xs font-semibold rounded flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isChecking ? 'animate-spin' : ''}`} />
+                  <span>已完成设置，一键重新检测权限</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 sm:p-5 border-t border-[#333644] bg-[#191b22] space-y-2.5">
+        <div className="px-5 py-3 border-t border-[#333644] bg-[#191b22] flex items-center justify-between">
+          <span className="text-[11px] text-[#8f8b80]">点击允许后系统将自动保存</span>
           <button
             type="button"
-            disabled={isChecking}
-            onClick={handleRecheck}
-            className="w-full py-3 bg-[#ff6b57] hover:bg-[#e05643] text-white font-bold text-xs sm:text-sm tracking-wide rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-[#ff6b57]/20 disabled:opacity-60"
+            onClick={onClose}
+            className="text-xs text-[#8f8b80] hover:text-white underline cursor-pointer"
           >
-            {isChecking ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4" />
-            )}
-            <span>
-              {isChecking ? '正在重新检测浏览器权限...' : '已完成设置，一键重新检测权限'}
-            </span>
+            暂不开启，关闭窗口
           </button>
-
-          <div className="flex items-center justify-between text-[11px] text-[#8f8b80] px-1">
-            <span>操作完成后点击上方按钮重新验证</span>
-            <button
-              type="button"
-              onClick={onClose}
-              className="hover:text-white underline cursor-pointer"
-            >
-              暂不设置，关闭窗口
-            </button>
-          </div>
         </div>
       </div>
     </div>
