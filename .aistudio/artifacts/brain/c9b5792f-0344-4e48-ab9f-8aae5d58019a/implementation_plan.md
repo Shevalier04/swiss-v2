@@ -1,48 +1,29 @@
-# Implementation Plan - 作业按课程筛选与分块折叠展示
+# Implementation Plan - 实现作业可编辑功能
 
-## 用户需求与改进目标
+## 需求分析
+用户提出：“作业定义后就没法改了，将它改为可编辑”。
+我们需要为已有的作业（Homework）添加编辑功能，允许用户修改作业所属课程（Course）、作业标题（Title）以及截止时间（Due）。
 
-针对当前作业列表混杂在一起不够直观的问题，实现以下功能：
-1. **顶部课程分类筛选**：添加按课程过滤的标签/芯片，可一键筛选单门课程的作业。
-2. **按课程分块折叠展示模式**：提供“按课程分组”与“按时间平铺”视图切换，将不同课程的作业按课程划分为可展开/折叠的板块，条理清晰。
+## 修改方案
 
----
+### 1. 后端支持更新作业 (`server/store.ts` & `server/api.ts`)
+- 在 `server/store.ts` 的 `DbStore` 类中添加 `updateHomework(username: string, id: number, updates: { course?: string; title?: string; due?: string })` 方法。
+- 在 `server/api.ts` 中添加 `PUT /api/homework/:id` 或 `PUT /api/assignments/:id` 路由，接收更新字段并持久化。
 
-## Proposed Changes
+### 2. 前端 API 封装 (`src/services/api.ts`)
+- 在 `api` 对象中添加 `updateHomework(id: number, data: { course: string; title: string; due?: string })` 方法，调用后端更新接口。
 
-### `src/components/HomeworkTab.tsx`
+### 3. 创建作业编辑弹窗组件 (`src/components/HomeworkEditModal.tsx`)
+- 新建 `HomeworkEditModal.tsx`，提供直观的表单输入：
+  - 课程名称（下拉选择或手动输入）
+  - 作业标题
+  - 截止时间
+- 支持保存与取消操作，带有校验与提示。
 
-1. **新增状态变量**：
-   - `selectedCourseFilter`: 当前选中的课程筛选（默认为 `'all'` 全部课程）。
-   - `viewMode`: 视图呈现模式（`'grouped'` 按课程分组折叠 vs `'flat'` 按时间平铺）。
-   - `collapsedCourses`: 记录已被折叠的课程名称 Set 集合。
+### 4. 在作业列表与 App 中集成编辑入口 (`src/components/HomeworkTab.tsx` & `src/App.tsx`)
+- 在 `HomeworkTab.tsx` 的每条作业行（右侧操作区或菜单）中增加“编辑”按钮（铅笔图标）。
+- 在 `App.tsx` 中实现 `handleUpdateHomework` 函数，调用 API 并更新本地状态。
 
-2. **顶部筛选栏增强**：
-   - 在已有的 `全部 / 未完成 / 已完成` 状态选项卡右侧/下方，加入动态计算的课程标签栏：
-     - `全部课程 (N)`、`计算机网络 (2)`、`Java开发技术 (1)`、`数据库概论 (1)`、`Web编程技术 (1)` 等。
-   - 提供视图模式切换按钮（`按课程分组` / `按时间平铺`）。
-
-3. **按课程分块折叠渲染逻辑 (`viewMode === 'grouped'`)**：
-   - 将当前筛选后的作业按课程名称进行 `groupBy` 聚合。
-   - 每门课程渲染为一个独立的精美卡片区块：
-     - **区块头部**：显示课程图标、课程名称、未完成/总作业数徽章，以及右侧 `[展开/折叠]` 按钮与整体进度条。
-     - **区块内容**：展开状态下渲染该课程下的全部作业项（按截止时间紧急程度排序）。
-
-4. **快捷交互**：
-   - 提供“一键展开全部/折叠全部”快捷操作按钮。
-
----
-
-## Verification Plan
-
-### 1. 界面与交互功能验证
-- 在作业 Tab 页面查看顶部筛选栏：
-  - 确认显示了各课程名称及其对应的作业数量徽章。
-  - 点击具体课程标签（如 `计算机网络`），验证列表是否仅保留该课程的作业。
-- 切换视图模式：
-  - 点击“按课程分组”，验证作业是否自动按 `计算机网络`、`数据库概论`、`Web编程技术` 等课程划分独立卡片区块。
-  - 点击卡片右上角折叠按钮，确认可独立展开/折叠该课程的作业列表。
-  - 切换回“按时间平铺”，确认恢复按截止时间统一排序的平铺列表。
-
-### 2. 构建与代码质量检查
-- 执行 `lint_applet` 和 `compile_applet` 确保 0 错误。
+## 验证计划
+- 编译与代码检查：运行 `compile_applet` 与 `lint_applet` 确保无语法或类型错误。
+- 功能验证：在“作业”标签页点击某项作业的编辑按钮，修改课程、标题或截止时间后保存，验证列表与云端同步正确更新。

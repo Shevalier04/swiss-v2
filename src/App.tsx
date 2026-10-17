@@ -21,6 +21,7 @@ import { ReminderToast } from './components/ReminderToast';
 import { SundayEveModal } from './components/SundayEveModal';
 import { DataManagementModal } from './components/DataManagementModal';
 import { BrowserDoctorModal } from './components/BrowserDoctorModal';
+import { FloatingPomodoroWidget } from './components/FloatingPomodoroWidget';
 
 import {
   CalendarDays,
@@ -494,6 +495,13 @@ export default function App() {
     setHomework(list);
   };
 
+  const handleUpdateHomework = async (id: number, data: { course: string; title: string; due: string }) => {
+    const updated = await api.updateHomework(id, data);
+    setHomework(prev => prev.map(h => (Number(h.id) === Number(id) ? updated : h)));
+    const list = await api.getHomework();
+    setHomework(list);
+  };
+
   const handleAddTask = async (title: string) => {
     const tempId = Date.now();
     const optimisticTask: TaskItem = {
@@ -813,6 +821,7 @@ export default function App() {
               onBatchAdd={handleBatchAddHw}
               onToggle={handleToggleHw}
               onDelete={handleDeleteHw}
+              onUpdate={handleUpdateHomework}
               onAddTask={handleAddTask}
               onJumpToFocusTask={handleJumpToFocusTask}
               onImportPreset={handleImportPresetHw}
@@ -1046,6 +1055,9 @@ export default function App() {
         onClose={() => setIsDoctorModalOpen(false)}
         toast={showToast}
       />
+
+      {/* Floating Pomodoro Widget when timer is running */}
+      <FloatingPomodoroWidget setActiveTab={setActiveTab} />
 
       {/* Toast Notification */}
       {toastMsg && (

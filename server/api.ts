@@ -421,15 +421,31 @@ const handlePostAssignments = (req: Request, res: Response) => {
 apiRouter.post('/homework', handlePostAssignments);
 apiRouter.post('/assignments', handlePostAssignments);
 
-// PUT /api/homework & /api/assignments
-const handlePutAssignments = (req: Request, res: Response) => {
+// PUT /api/homework & /api/assignments (toggle or update)
+const handleUpdateAssignment = (req: Request, res: Response) => {
   const username = getCurrentUser(req);
   if (!username) return res.status(401).json({ error: '未登录' });
 
-  const id = Number(req.body?.id || req.params?.id);
+  const id = Number(req.params?.id || req.body?.id);
   if (!id) return res.status(400).json({ error: '请提供作业 id' });
 
-  const updated = dbStore.toggleHomework(username, id);
+  const { course, title, due, deadline, done, completed } = req.body || {};
+  const courseVal = course !== undefined ? course : req.body?.course_name;
+  const dueVal = due !== undefined ? due : deadline;
+  const doneVal = done !== undefined ? done : (completed !== undefined ? Boolean(completed) : undefined);
+
+  let updated;
+  if (courseVal !== undefined || title !== undefined || dueVal !== undefined || doneVal !== undefined) {
+    updated = dbStore.updateHomework(username, id, {
+      course: courseVal,
+      title,
+      due: dueVal,
+      done: doneVal,
+    });
+  } else {
+    updated = dbStore.toggleHomework(username, id);
+  }
+
   const formattedItem = {
     id: updated.id,
     course: updated.course,
@@ -448,10 +464,12 @@ const handlePutAssignments = (req: Request, res: Response) => {
   });
 };
 
-apiRouter.put('/homework/:id/toggle', handlePutAssignments);
-apiRouter.put('/assignments/:id/toggle', handlePutAssignments);
-apiRouter.put('/homework', handlePutAssignments);
-apiRouter.put('/assignments', handlePutAssignments);
+apiRouter.put('/homework/:id/toggle', handleUpdateAssignment);
+apiRouter.put('/assignments/:id/toggle', handleUpdateAssignment);
+apiRouter.put('/homework/:id', handleUpdateAssignment);
+apiRouter.put('/assignments/:id', handleUpdateAssignment);
+apiRouter.put('/homework', handleUpdateAssignment);
+apiRouter.put('/assignments', handleUpdateAssignment);
 
 // DELETE /api/homework & /api/assignments
 const handleDeleteAssignments = (req: Request, res: Response) => {

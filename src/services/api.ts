@@ -343,6 +343,21 @@ export const api = {
     };
   },
 
+  async updateHomework(id: number, data: { course?: string; title?: string; due?: string; done?: boolean }): Promise<Homework> {
+    const res = await request<any>(`/assignments/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    const it = res.assignment || res.homework || res;
+    return {
+      id: Number(it.id || id),
+      course: it.course || it.course_name || data.course || '',
+      title: it.title || data.title || '',
+      due: it.due || it.deadline || data.due || '',
+      done: Boolean(it.completed !== undefined ? it.completed : (it.done !== undefined ? it.done : (data.done ?? false))),
+    };
+  },
+
   async deleteHomework(id: number): Promise<void> {
     await request(`/assignments?id=${id}`, { method: 'DELETE' });
   },

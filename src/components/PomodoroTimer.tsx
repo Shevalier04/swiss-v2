@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Play,
   Pause,
@@ -55,22 +55,52 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
   onSessionComplete,
   toast,
 }) => {
-  // Collapsible drawer state - defaults to collapsed to save space for tasks
+  // Collapsible drawer state - defaults to expanded
   const [isExpanded, setIsExpanded] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('pomodoro_drawer_expanded');
-      return saved === 'true';
+      return saved !== null ? saved === 'true' : true;
     } catch {
-      return false;
+      return true;
     }
   });
 
-  const [mode, setMode] = useState<TimerMode>('work');
-  const [timeLeft, setTimeLeft] = useState<number>(MODE_CONFIG.work.defaultMinutes * 60);
-  const [customTotalDuration, setCustomTotalDuration] = useState<number>(
-    MODE_CONFIG.work.defaultMinutes * 60
+  // Persistent active timer state reader helper
+  const savedTimerData = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('pomodoro_running_state');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.targetEndTime === 'number') {
+          const remaining = Math.round((parsed.targetEndTime - Date.now()) / 1000);
+          return {
+            mode: (parsed.mode as TimerMode) || 'work',
+            remaining: Math.max(0, remaining),
+            isRunning: parsed.isRunning && remaining > 0,
+            customTotalDuration: parsed.customTotalDuration || MODE_CONFIG[(parsed.mode as TimerMode) || 'work'].defaultMinutes * 60,
+            targetEndTime: parsed.targetEndTime,
+            finishedInBackground: parsed.isRunning && remaining <= 0,
+          };
+        }
+      }
+    } catch {}
+    return null;
+  }, []);
+
+  const [mode, setMode] = useState<TimerMode>(savedTimerData?.mode || 'work');
+  const [timeLeft, setTimeLeft] = useState<number>(
+    savedTimerData ? savedTimerData.remaining : MODE_CONFIG.work.defaultMinutes * 60
   );
-  const [isRunning, setIsRunning] = useState<boolean>(false);
+  const [customTotalDuration, setCustomTotalDuration] = useState<number>(
+    savedTimerData
+      ? savedTimerData.customTotalDuration
+      : MODE_CONFIG.work.defaultMinutes * 60
+  );
+  const [isRunning, setIsRunning] = useState<boolean>(savedTimerData?.isRunning || false);
+  const targetEndTimeRef = useRef<number | null>(
+    savedTimerData?.isRunning ? savedTimerData.targetEndTime : null
+  );
+
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [completedPomodoros, setCompletedPomodoros] = useState<number>(() => {
     try {
@@ -133,21 +163,38 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
     } catch (e) {}
   };
 
-  // Timer tick effect
+  // Timer tick effect with targetEndTime synchronization
   const timerRef = useRef<any>(null);
 
   useEffect(() => {
     if (isRunning) {
       timerRef.current = setInterval(() => {
-        setTimeLeft(prev => {
-          if (prev <= 1) {
+        if (targetEndTimeRef.current) {
+          const rem = Math.max(0, Math.round((targetEndTimeRef.current - Date.now()) / 1000));
+          setTimeLeft(rem);
+          if (rem <= 0) {
             clearInterval(timerRef.current);
             setIsRunning(false);
+            targetEndTimeRef.current = null;
+            try {
+              localStorage.removeItem('pomodoro_running_state');
+            } catch {}
             handleTimerComplete();
-            return 0;
           }
-          return prev - 1;
-        });
+        } else {
+          setTimeLeft(prev => {
+            if (prev <= 1) {
+              clearInterval(timerRef.current);
+              setIsRunning(false);
+              try {
+                localStorage.removeItem('pomodoro_running_state');
+              } catch {}
+              handleTimerComplete();
+              return 0;
+            }
+            return prev - 1;
+          });
+        }
       }, 1000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -156,6 +203,14 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [isRunning, mode, customTotalDuration]);
+
+  // Handle case where timer finished while unmounted / in background
+  useEffect(() => {
+    if (savedTimerData?.finishedInBackground) {
+      toast?.('⏱️ 离开期间番茄钟已计时完成！');
+      handleTimerComplete();
+    }
+  }, []);
 
   const handleTimerComplete = () => {
     playChime('finish');
@@ -186,23 +241,63 @@ export const PomodoroTimer: React.FC<PomodoroTimerProps> = ({
   const switchMode = (newMode: TimerMode) => {
     setIsRunning(false);
     setIsEditingTime(false);
+    targetEndTimeRef.current = null;
     setMode(newMode);
     const secs = MODE_CONFIG[newMode].defaultMinutes * 60;
     setCustomTotalDuration(secs);
     setTimeLeft(secs);
+    try {
+      localStorage.removeItem('pomodoro_running_state');
+    } catch {}
   };
 
   const toggleRun = () => {
-    if (!isRunning && timeLeft <= 0) {
-      setTimeLeft(totalDuration);
+    if (isRunning) {
+      // Pause timer
+      setIsRunning(false);
+      targetEndTimeRef.current = null;
+      try {
+        localStorage.setItem(
+          'pomodoro_running_state',
+          JSON.stringify({
+            mode,
+            targetEndTime: null,
+            isRunning: false,
+            customTotalDuration,
+            currentTaskTitle,
+          })
+        );
+      } catch {}
+    } else {
+      // Start / resume timer
+      const durationSecs = timeLeft > 0 ? timeLeft : totalDuration;
+      const target = Date.now() + durationSecs * 1000;
+      targetEndTimeRef.current = target;
+      setTimeLeft(durationSecs);
+      setIsRunning(true);
+      try {
+        localStorage.setItem(
+          'pomodoro_running_state',
+          JSON.stringify({
+            mode,
+            targetEndTime: target,
+            isRunning: true,
+            customTotalDuration,
+            currentTaskTitle,
+          })
+        );
+      } catch {}
     }
-    setIsRunning(prev => !prev);
   };
 
   const resetTimer = () => {
     setIsRunning(false);
     setIsEditingTime(false);
+    targetEndTimeRef.current = null;
     setTimeLeft(totalDuration);
+    try {
+      localStorage.removeItem('pomodoro_running_state');
+    } catch {}
   };
 
   const adjustMinutes = (deltaMinutes: number) => {

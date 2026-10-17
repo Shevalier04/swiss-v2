@@ -38,6 +38,7 @@ export const TasksTab: React.FC<TasksTabProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [togglingId, setTogglingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [isImportingSamples, setIsImportingSamples] = useState(false);
   const [selectedTaskForPomodoro, setSelectedTaskForPomodoro] = useState<string>(focusTaskTitle || '');
 
   // Synchronize incoming focusTaskTitle from external sources (e.g. HomeworkTab)
@@ -106,6 +107,8 @@ export const TasksTab: React.FC<TasksTabProps> = ({
   };
 
   const handleImportSampleTasks = async () => {
+    if (isImportingSamples) return;
+    setIsImportingSamples(true);
     try {
       if (onImportPresetTasks) {
         await onImportPresetTasks();
@@ -116,6 +119,8 @@ export const TasksTab: React.FC<TasksTabProps> = ({
       toast('已成功导入 4 项示例任务');
     } catch (e: any) {
       toast(e.message || '导入失败');
+    } finally {
+      setIsImportingSamples(false);
     }
   };
 
@@ -257,9 +262,17 @@ export const TasksTab: React.FC<TasksTabProps> = ({
               <button
                 type="button"
                 onClick={handleImportSampleTasks}
-                className="px-3.5 py-1.5 bg-[#6b7cff] hover:bg-[#5868e6] text-white text-xs font-bold rounded cursor-pointer transition-colors"
+                disabled={isImportingSamples}
+                className="px-3.5 py-1.5 bg-[#6b7cff] hover:bg-[#5868e6] text-white text-xs font-bold rounded cursor-pointer transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 mx-auto"
               >
-                一键导入 4 项示例任务
+                {isImportingSamples ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>正在导入中...</span>
+                  </>
+                ) : (
+                  <span>一键导入 4 项示例任务</span>
+                )}
               </button>
             </div>
           )}

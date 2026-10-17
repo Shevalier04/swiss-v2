@@ -291,7 +291,7 @@ class Store {
     }
 
     const newHw: Homework = {
-      id: Date.now() + Math.floor(Math.random() * 1000),
+      id: Date.now() * 100000 + Math.floor(Math.random() * 10000000),
       course: item.course,
       title: item.title,
       due: item.due,
@@ -307,6 +307,18 @@ class Store {
     const target = list.find(h => h.id === id);
     if (!target) throw new Error('作业未找到');
     target.done = !target.done;
+    this.saveHomework(username, list);
+    return target;
+  }
+
+  updateHomework(username: string, id: number, updates: { course?: string; title?: string; due?: string; done?: boolean }): Homework {
+    const list = this.getHomework(username);
+    const target = list.find(h => h.id === id);
+    if (!target) throw new Error('作业未找到');
+    if (updates.course !== undefined) target.course = updates.course;
+    if (updates.title !== undefined) target.title = updates.title;
+    if (updates.due !== undefined) target.due = updates.due;
+    if (updates.done !== undefined) target.done = updates.done;
     this.saveHomework(username, list);
     return target;
   }

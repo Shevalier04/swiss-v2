@@ -22,9 +22,11 @@ import {
   BookOpen,
   Grid,
   List,
+  Pencil,
 } from 'lucide-react';
 import { HomeworkImportModal } from './HomeworkImportModal';
 import { SmartHomeworkPasteModal } from './SmartHomeworkPasteModal';
+import { HomeworkEditModal } from './HomeworkEditModal';
 
 interface HomeworkTabProps {
   user?: User | null;
@@ -38,6 +40,7 @@ interface HomeworkTabProps {
   onAddTask?: (title: string) => Promise<void>;
   onJumpToFocusTask?: (taskTitle: string) => void;
   onImportPreset?: () => void;
+  onUpdate?: (id: number, data: { course: string; title: string; due: string }) => Promise<void>;
   toast: (msg: string) => void;
 }
 
@@ -53,6 +56,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
   onAddTask,
   onJumpToFocusTask,
   onImportPreset,
+  onUpdate,
   toast,
 }) => {
   const [filter, setFilter] = useState<'all' | 'todo' | 'done'>('all');
@@ -61,6 +65,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
   const [selectedCourseFilter, setSelectedCourseFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grouped' | 'flat'>('grouped');
   const [collapsedCourses, setCollapsedCourses] = useState<Record<string, boolean>>({});
+  const [editingHomework, setEditingHomework] = useState<Homework | null>(null);
 
   const toggleCourseCollapse = (cName: string) => {
     setCollapsedCourses(prev => ({ ...prev, [cName]: !prev[cName] }));
@@ -91,6 +96,43 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
       setSelectedCourse(courseNames[0]);
     }
   }, [courseNames, selectedCourse]);
+
+  // Platform detector helper
+  const getPlatformBadge = (text: string) => {
+    if (/PTA/i.test(text)) {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 shrink-0" title="平台: PTA">
+          <span>💻</span>
+          <span>PTA</span>
+        </span>
+      );
+    }
+    if (/课堂派/i.test(text)) {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0" title="平台: 课堂派">
+          <span>🏫</span>
+          <span>课堂派</span>
+        </span>
+      );
+    }
+    if (/学习通/i.test(text)) {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0" title="平台: 学习通">
+          <span>📚</span>
+          <span>学习通</span>
+        </span>
+      );
+    }
+    if (/明理云盘|云盘/i.test(text)) {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold rounded bg-purple-500/15 text-purple-400 border border-purple-500/30 shrink-0" title="平台: 明理云盘">
+          <span>☁️</span>
+          <span>明理云盘</span>
+        </span>
+      );
+    }
+    return null;
+  };
 
   // Real-time parsed preview for single-line quick input
   const quickPreview = useMemo(() => {
@@ -622,6 +664,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
                 title={item.done ? '点击标记为未完成' : '点击标记为已完成'}
               >
                 <div className="flex items-center gap-2 flex-wrap">
+                  {getPlatformBadge(`${item.course} ${item.title}`)}
                   <span className="font-bold text-xs px-1.5 py-0.5 bg-[#2a2d36] text-[#6b7cff] border border-[#6b7cff]/30 rounded group-hover/content:border-[#6b7cff]/60 transition-colors">
                     {item.course}
                   </span>
@@ -698,6 +741,19 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
                   )}
                 </div>
               )}
+
+              {/* Edit button */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingHomework(item);
+                }}
+                className="text-[#63605a] hover:text-[#6b7cff] transition-colors p-1.5 -m-0.5 cursor-pointer shrink-0"
+                title="编辑作业"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
 
               {/* Delete button */}
               <button
@@ -939,6 +995,17 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
           existingHomework={homework}
           onImport={handleBatchImport}
           onClose={() => setShowImportModal(false)}
+          toast={toast}
+        />
+      )}
+
+      {/* Homework Edit Modal */}
+      {editingHomework && onUpdate && (
+        <HomeworkEditModal
+          homework={editingHomework}
+          courses={courses}
+          onSave={onUpdate}
+          onClose={() => setEditingHomework(null)}
           toast={toast}
         />
       )}
