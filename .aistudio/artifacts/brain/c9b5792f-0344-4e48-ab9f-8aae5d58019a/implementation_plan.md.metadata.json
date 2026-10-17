@@ -1,6 +1,6 @@
 {
-  "summary": "针对移动端声波有反应但提示未检测到清晰发音、华为浏览器异常以及指引繁琐问题，实施“纯AudioContext通用16kHz无损WAV录音”、“云端双引擎转录修复”与“一键唤起原生授权与自动重测”方案。",
-  "updatedAt": "2026-10-17T09:05:40.762871806Z",
+  "summary": "Implementation plan for multi-tiered notification fallback and fallback combination mode in Edge, Huawei, and mobile browsers.",
+  "updatedAt": "2026-10-17T11:26:25.230116526Z",
   "requestFeedback": true,
   "userFacing": true
 }

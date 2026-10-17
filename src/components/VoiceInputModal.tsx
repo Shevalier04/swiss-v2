@@ -232,7 +232,60 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
     }
   };
 
-  // Stop recording and send 16kHz WAV to Cloud Dual-Engine
+  // Attempt local browser native SpeechRecognition fallback
+  const tryLocalSpeechRecognition = useCallback((): Promise<string | null> => {
+    return new Promise(resolve => {
+      if (typeof window === 'undefined') {
+        resolve(null);
+        return;
+      }
+      const SpeechClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechClass) {
+        resolve(null);
+        return;
+      }
+
+      try {
+        const recognition = new SpeechClass();
+        recognition.lang = 'zh-CN';
+        recognition.continuous = false;
+        recognition.interimResults = true;
+
+        let resultText = '';
+
+        recognition.onresult = (event: any) => {
+          let interim = '';
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              resultText += event.results[i][0].transcript;
+            } else {
+              interim += event.results[i][0].transcript;
+            }
+          }
+          const current = resultText || interim;
+          if (current) {
+            setRecognizedText(current);
+          }
+        };
+
+        recognition.onerror = (err: any) => {
+          console.warn('Local webkitSpeechRecognition error:', err);
+          resolve(resultText ? resultText.trim() : null);
+        };
+
+        recognition.onend = () => {
+          resolve(resultText ? resultText.trim() : null);
+        };
+
+        recognition.start();
+      } catch (err) {
+        console.warn('Failed to start local SpeechRecognition:', err);
+        resolve(null);
+      }
+    });
+  }, []);
+
+  // Stop recording and send 16kHz WAV to Cloud Dual-Engine (or Local Native Fallback)
   const stopRecording = async () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -269,28 +322,64 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
         return;
       }
 
+      const forceOffline = typeof localStorage !== 'undefined' && localStorage.getItem('cs_force_offline_speech') === 'true';
+
+      if (forceOffline) {
+        toast('正在触发本地内核离线语音识别...');
+        const localTxt = await tryLocalSpeechRecognition();
+        if (localTxt) {
+          setRecognizedText(localTxt);
+          toast('【本地内核离线识别成功】！');
+          return;
+        }
+      }
+
       const prompt =
         mode === 'homework'
           ? '请将这段中文语音内容转录为纯文本，准确保留课程名称（如高数、计网、线代、界面设计等）、作业具体内容（如课后习题、实验报告、P32第1题等）和截止时间（如明天交、周五晚前、10月25日截止等）。直接输出纯文本，不要任何额外解说。'
           : '请将这段语音内容原样转录为待办任务纯文本，直接输出文本内容，不要包含多余解说。';
 
       // Send pristine 16kHz audio/wav to backend dual-engine
-      const result = await api.transcribeAudio(base64, 'audio/wav', prompt);
-      if (result && result.text && result.text.trim()) {
-        setRecognizedText(result.text.trim());
-        toast('语音识别成功！');
-      } else if (result?.fallbackToLocal) {
-        setErrorMsg('语音已录制完成。若发音较轻，请靠近手机麦克风大声重试，或直接点击下方预设/输入。');
-      } else {
-        setErrorMsg('未识别到清晰文字，请靠近手机麦克风重新说话');
+      try {
+        const result = await api.transcribeAudio(base64, 'audio/wav', prompt);
+        if (result && result.text && result.text.trim()) {
+          setRecognizedText(result.text.trim());
+          toast('语音识别成功！');
+          return;
+        } else if (result?.fallbackToLocal) {
+          const localTxt = await tryLocalSpeechRecognition();
+          if (localTxt) {
+            setRecognizedText(localTxt);
+            toast('【本地内核离线识别成功】！');
+            return;
+          }
+          setErrorMsg('语音已录制完成。若发音较轻，请靠近手机麦克风大声重试，或直接点击下方预设/输入。');
+        } else {
+          const localTxt = await tryLocalSpeechRecognition();
+          if (localTxt) {
+            setRecognizedText(localTxt);
+            toast('已通过本地浏览器内核成功识别！');
+            return;
+          }
+          setErrorMsg('未识别到清晰文字，请靠近手机麦克风重新说话');
+        }
+      } catch (cloudErr: any) {
+        console.warn('Cloud transcription error, attempting local browser speech fallback:', cloudErr);
+        const localTxt = await tryLocalSpeechRecognition();
+        if (localTxt) {
+          setRecognizedText(localTxt);
+          toast('云端服务异常，已自动为您降级为本地内核语音识别！');
+          return;
+        }
+        const friendlyMsg =
+          cloudErr?.message === 'BACKEND_HTML_FALLBACK' || cloudErr?.isFallback
+            ? '云端语音服务暂未就绪，请直接打字输入或稍后重试。'
+            : (cloudErr?.message || '语音转录遇到问题，请重试或直接打字输入');
+        setErrorMsg(friendlyMsg);
       }
     } catch (err: any) {
       console.error('WAV transcription error:', err);
-      const friendlyMsg =
-        err?.message === 'BACKEND_HTML_FALLBACK' || err?.isFallback
-          ? '云端语音服务暂未就绪，请直接打字输入或稍后重试。'
-          : (err?.message || '语音转录遇到问题，请重试或直接打字输入');
-      setErrorMsg(friendlyMsg);
+      setErrorMsg(err?.message || '语音转录遇到问题，请重试或直接打字输入');
     } finally {
       setIsTranscribing(false);
     }

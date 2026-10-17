@@ -626,38 +626,44 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
             💡 锁屏提醒说明：点击“开启锁屏系统推送”授权后，即使手机锁屏放入书包，云端也会在开课前 15 分钟及作业临期 24h / 3h 准时推送；iOS 用户需先在 Safari 中“添加到主屏幕”开启系统通知。
           </div>
         </div>
-      ) : capability.isQuark || capability.mode === 'quark_inapp' || !capability.hasNotification ? (
+      ) : capability.isQuark || capability.mode === 'quark_inapp' || !capability.hasNotification || capability.isForceFallback ? (
         <div className="bg-[#1f222a] border-2 border-[#d99a2b]/70 p-4 rounded-lg shadow-lg text-[#e9e4d8] space-y-3.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <Smartphone className="w-4 h-4 text-[#d99a2b]" />
               <h4 className="font-editorial font-bold text-base text-[#e9e4d8]">
-                夸克浏览器 · 应用内悬浮横幅与物理震动模式
+                {capability.isForceFallback
+                  ? '强制开启 · 通知全效组合降级保底模式'
+                  : capability.isQuark
+                  ? '夸克浏览器 · 应用内悬浮横幅与物理震动模式'
+                  : '通知全效组合降级保底模式 (悬浮横幅 + 震动 + 声音)'}
               </h4>
             </div>
             <span className="text-[10px] px-2 py-0.5 rounded bg-[#d99a2b]/20 text-[#d99a2b] font-bold">
-              夸克专属兼容模式
+              {capability.isForceFallback ? '强制降级保底' : '组合降级保底模式'}
             </span>
           </div>
 
           <p className="text-xs text-[#a8a399] leading-relaxed">
-            检测到当前使用<strong>夸克浏览器</strong>。因夸克浏览器内核精简禁用了 W3C 系统级通知通道（添加至手机桌面也无法调用系统通知栏），本系统已为您<strong>自动无缝激活【应用内强提醒卡片 + 手机物理震动 + 课前清脆提示音】</strong>！无论在应用内任何界面，课前均会触发物理震动与弹窗提醒。
+            {capability.isQuark
+              ? '检测到当前使用夸克浏览器（已禁原生通知）。本系统已为您自动无缝激活【应用内强提醒卡片 + 手机物理震动 + 课前清脆提示音】！无论在应用内任何界面，课前均会触发物理震动与弹窗提醒。'
+              : '针对 Edge、华为浏览器或系统拦截通知环境，系统已为您自动激活【应用内强提醒悬浮横幅 + 手机物理马达震动 + Web Audio 提示音】！并支持一键导入手机系统日历响铃。'}
           </p>
 
           {/* Status indicator row */}
           <div className="bg-[#16181d] border border-[#2e313b] p-3 rounded text-xs space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-[#8f8b80]">夸克内核支持状态：</span>
-              <span className="text-[#4ade80] font-medium">应用内横幅 + 震动已就绪 ✓</span>
+              <span className="text-[#8f8b80]">组合降级就绪状态：</span>
+              <span className="text-[#4ade80] font-medium">横幅 + 震动 + 提示音已激活 ✓</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-[#8f8b80]">课前手机物理震动：</span>
               <span className="text-[#4ade80] font-bold">
-                {typeof navigator !== 'undefined' && 'vibrate' in navigator ? '支持物理震动 (Vibrate) ✓' : '蜂鸣提示音模式 ✓'}
+                {typeof navigator !== 'undefined' && 'vibrate' in navigator ? '支持物理震动 (Vibrate) ✓' : '提示音模式 ✓'}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-[#8f8b80]">课前即时提醒卡片：</span>
+              <span className="text-[#8f8b80]">课前悬浮提醒卡片：</span>
               <span className="text-[#6b7cff] font-medium">
                 {settings.inapp ? '应用内横幅已开启 ✓' : '已就绪 (点击下方开启)'}
               </span>
@@ -673,28 +679,34 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
                 if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
                   try { navigator.vibrate([250, 100, 250]); } catch {}
                 }
-                toast('夸克提醒模式已开启！已同步激活页面横幅、手机震动与蜂鸣提示音。');
+                toast('全效降级提醒模式已开启！已同步激活页面横幅、手机震动与蜂鸣提示音。');
               }}
               className="py-2.5 px-3 rounded text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer bg-[#d99a2b] text-[#1d1f24] hover:bg-[#c4871f] shadow-md shadow-[#d99a2b]/20"
             >
               <CheckCircle className="w-3.5 h-3.5" />
-              <span>一键开启夸克横幅与震动提醒</span>
+              <span>一键激活全效组合降级提醒</span>
             </button>
 
             <button
               type="button"
-              onClick={handleTestLocalNotification}
+              onClick={() => {
+                onTriggerTestReminder();
+                if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                  try { navigator.vibrate([300, 150, 300, 150, 400]); } catch {}
+                }
+                toast('【组合降级测试成功】已触发物理震动、悬浮横幅与提示音！');
+              }}
               className="py-2.5 px-3 rounded text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer border bg-[#262832] border-[#d99a2b] text-[#d99a2b] hover:bg-[#d99a2b] hover:text-[#1d1f24]"
             >
               <Play className="w-3.5 h-3.5" />
-              <span>立即测试手机震动与提示音</span>
+              <span>测试组合降级 (横幅+震动+声音)</span>
             </button>
           </div>
 
           {/* Native Browser Switch Tip for Lock-screen */}
           <div className="border-t border-[#2e313b] pt-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="text-[11px] text-[#8f8b80]">
-              💡 如需手机黑屏关屏幕时也能收到【系统级锁屏横幅通知】：
+              💡 遇到手机锁屏黑屏拦截？推荐导出手机系统日历或开启诊断：
             </div>
             <div className="flex items-center gap-2">
               {onOpenDoctor && (
@@ -712,7 +724,7 @@ export const ReminderTab: React.FC<ReminderTabProps> = ({
                 onClick={handleCopyUrlForNativeBrowser}
                 className="text-[11px] text-[#6b7cff] hover:text-[#8ea4ff] font-bold flex items-center gap-1 cursor-pointer bg-[#6b7cff]/15 px-2.5 py-1 rounded border border-[#6b7cff]/30 w-fit shrink-0"
               >
-                <span>一键复制网址 ➔ 在手机自带浏览器打开</span>
+                <span>复制网址 / 打开排查向导</span>
               </button>
             </div>
           </div>

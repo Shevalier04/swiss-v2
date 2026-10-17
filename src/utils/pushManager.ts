@@ -25,6 +25,7 @@ export interface NotificationCapability {
   isHuaweiOrDomestic: boolean;
   isQuark: boolean;
   isPushServiceUnreachable?: boolean;
+  isForceFallback?: boolean;
   permission: NotificationPermission | 'unsupported';
   mode: 'webpush' | 'local_system' | 'quark_inapp' | 'unsupported';
 }
@@ -36,6 +37,15 @@ export function isQuarkBrowser(): boolean {
   const isUC = /ucbrowser|ubrowser|u4\//i.test(ua);
   const isQuarkObj = !!(window as any).quark || !!(navigator as any).quark;
   return isQuarkUA || isUC || isQuarkObj;
+}
+
+export function isForceFallbackNotificationEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem('cs_force_fallback_notify') === 'true';
+  } catch {
+    return false;
+  }
 }
 
 export function detectNotificationCapability(): NotificationCapability {
@@ -60,6 +70,8 @@ export function detectNotificationCapability(): NotificationCapability {
     typeof localStorage !== 'undefined' &&
     localStorage.getItem('cs_fcm_unreachable') === 'true';
 
+  const isForceFallback = isForceFallbackNotificationEnabled();
+
   const hasPushManagerRaw = 'PushManager' in window && hasServiceWorker;
   const hasPushManager = hasPushManagerRaw && !isPushServiceUnreachable;
 
@@ -67,7 +79,7 @@ export function detectNotificationCapability(): NotificationCapability {
   const isQuark =
     isQuarkBrowser() || (!hasNotification && /mobile|android|iphone|ipad|phone/i.test(ua));
   const isHuaweiOrDomestic =
-    /huaweibrowser|huawei|harmonyos|honor|heytap|micromessenger|mqqbrowser|ucbrowser|baidubrowser|quark|qk/i.test(
+    /huaweibrowser|huawei|harmonyos|honor|heytap|micromessenger|mqqbrowser|ucbrowser|baidubrowser|quark|qk|edg/i.test(
       ua
     );
 
@@ -76,11 +88,11 @@ export function detectNotificationCapability(): NotificationCapability {
     : 'unsupported';
 
   let mode: 'webpush' | 'local_system' | 'quark_inapp' | 'unsupported' = 'unsupported';
-  if (hasPushManager && hasNotification) {
+  if (hasPushManager && hasNotification && !isForceFallback) {
     mode = 'webpush';
-  } else if (hasNotification) {
+  } else if (hasNotification && !isForceFallback) {
     mode = 'local_system';
-  } else if (isQuark || !hasNotification) {
+  } else if (isQuark || !hasNotification || isForceFallback) {
     mode = 'quark_inapp';
   }
 
@@ -91,6 +103,7 @@ export function detectNotificationCapability(): NotificationCapability {
     isHuaweiOrDomestic,
     isQuark,
     isPushServiceUnreachable,
+    isForceFallback,
     permission,
     mode,
   };
