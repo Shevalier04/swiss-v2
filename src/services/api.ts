@@ -344,9 +344,18 @@ export const api = {
   },
 
   async updateHomework(id: number, data: { course?: string; title?: string; due?: string; done?: boolean }): Promise<Homework> {
-    const res = await request<any>(`/assignments/${id}`, {
+    const res = await request<any>('/assignments', {
       method: 'PUT',
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        id,
+        course_name: data.course,
+        course: data.course,
+        title: data.title,
+        deadline: data.due,
+        due: data.due,
+        done: data.done,
+        completed: data.done,
+      }),
     });
     const it = res.assignment || res.homework || res;
     return {
