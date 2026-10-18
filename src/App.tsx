@@ -444,6 +444,7 @@ export default function App() {
       .replace(/^(PTA|课堂派|超星学习通|学习通|明理云盘|云盘)[\s:：-]*/i, '')
       .trim();
 
+    // Only auto-sync if we are marking it AS DONE
     const matchedTask = willBeDone
       ? tasks.find(t => {
           if (t.done) return false;
