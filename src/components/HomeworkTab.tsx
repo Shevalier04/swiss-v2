@@ -306,26 +306,23 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
     const getCleanTitle = (title: string) => {
       return (title || '')
         .replace(/^\[.*?\]\s*/, '')
-        .replace(/^(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)[\s:：-]*/i, '')
-        .replace(/实验[3三]/g, '实验三')
+        .replace(/^(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)[\s:：-]*|[\s:：-]*(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)$/i, '')
         .trim()
         .toLowerCase();
     };
 
     for (const h of raw) {
-      let courseName = (h.course || '常规课程').trim();
-      if (courseName.toLowerCase() === 'java web') courseName = 'Web编程技术';
-      const courseKey = courseName.toLowerCase();
-      
+      const courseKey = (h.course || '常规课程').trim().toLowerCase();
       const cleanTitle = getCleanTitle(h.title);
       const compositeKey = `${courseKey}__${cleanTitle}`;
 
       if (!map.has(compositeKey)) {
-        map.set(compositeKey, { ...h, course: courseName });
+        map.set(compositeKey, { ...h });
       } else {
         const existing = map.get(compositeKey)!;
-        const isCurrentPrefixed = /^(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)[\s:：-]*/i.test(h.title.trim());
-        const isExistingPrefixed = /^(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)[\s:：-]*/i.test(existing.title.trim());
+        const platformPattern = /^(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)[\s:：-]*|[\s:：-]*(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)$/i;
+        const isCurrentPrefixed = platformPattern.test(h.title.trim());
+        const isExistingPrefixed = platformPattern.test(existing.title.trim());
 
         // Prioritize and keep the version with the platform prefix
         if (!isExistingPrefixed && isCurrentPrefixed) {
