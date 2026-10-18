@@ -693,46 +693,50 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
                 <button
                   onClick={() => handleClearTarget('courses')}
                   disabled={loading}
-                  className="w-full py-2.5 px-3 bg-[#24262c] hover:bg-[#ff6b57]/20 border border-[#33363d] hover:border-[#ff6b57] rounded text-left text-xs text-[#e9e4d8] flex items-center justify-between transition-colors cursor-pointer"
+                  className="w-full py-2.5 px-3 bg-[#24262c] hover:bg-[#ff6b57]/20 border border-[#33363d] hover:border-[#ff6b57] rounded text-left text-xs text-[#e9e4d8] flex items-center justify-between transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  <span>清空全部云端课程 ({courses.length} 门)</span>
-                  <Trash2 className="w-3.5 h-3.5 text-[#ff6b57]" />
+                  <span>{loading ? '正在清理...' : `清空全部云端课程 (${courses.length} 门)`}</span>
+                  {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#ff6b57]" /> : <Trash2 className="w-3.5 h-3.5 text-[#ff6b57]" />}
                 </button>
 
                 <button
                   onClick={() => handleClearTarget('assignments')}
                   disabled={loading}
-                  className="w-full py-2.5 px-3 bg-[#24262c] hover:bg-[#ff6b57]/20 border border-[#33363d] hover:border-[#ff6b57] rounded text-left text-xs text-[#e9e4d8] flex items-center justify-between transition-colors cursor-pointer"
+                  className="w-full py-2.5 px-3 bg-[#24262c] hover:bg-[#ff6b57]/20 border border-[#33363d] hover:border-[#ff6b57] rounded text-left text-xs text-[#e9e4d8] flex items-center justify-between transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  <span>清空全部云端作业 ({homework.length} 项)</span>
-                  <Trash2 className="w-3.5 h-3.5 text-[#ff6b57]" />
+                  <span>{loading ? '正在清理...' : `清空全部云端作业 (${homework.length} 项)`}</span>
+                  {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#ff6b57]" /> : <Trash2 className="w-3.5 h-3.5 text-[#ff6b57]" />}
                 </button>
 
                 <button
                   onClick={() => handleClearTarget('tasks')}
                   disabled={loading}
-                  className="w-full py-2.5 px-3 bg-[#24262c] hover:bg-[#ff6b57]/20 border border-[#33363d] hover:border-[#ff6b57] rounded text-left text-xs text-[#e9e4d8] flex items-center justify-between transition-colors cursor-pointer"
+                  className="w-full py-2.5 px-3 bg-[#24262c] hover:bg-[#ff6b57]/20 border border-[#33363d] hover:border-[#ff6b57] rounded text-left text-xs text-[#e9e4d8] flex items-center justify-between transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  <span>清空全部云端任务 ({tasks.length} 条)</span>
-                  <Trash2 className="w-3.5 h-3.5 text-[#ff6b57]" />
+                  <span>{loading ? '正在清理...' : `清空全部云端任务 (${tasks.length} 条)`}</span>
+                  {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#ff6b57]" /> : <Trash2 className="w-3.5 h-3.5 text-[#ff6b57]" />}
                 </button>
 
                 <button
                   onClick={handleCleanupAssignments}
                   disabled={loading}
-                  className="w-full py-2.5 px-3 bg-[#6b7cff]/10 hover:bg-[#6b7cff]/20 border border-[#6b7cff]/30 hover:border-[#6b7cff]/60 rounded text-left text-xs text-[#e9e4d8] flex items-center justify-between transition-colors cursor-pointer"
+                  className="w-full py-2.5 px-3 bg-[#6b7cff]/10 hover:bg-[#6b7cff]/20 border border-[#6b7cff]/30 hover:border-[#6b7cff]/60 rounded text-left text-xs text-[#e9e4d8] flex items-center justify-between transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  <span>智能合并重复作业 (基于平台前缀)</span>
-                  <Sparkles className="w-3.5 h-3.5 text-[#6b7cff]" />
+                  <span>{loading ? '正在合并...' : '智能合并重复作业 (基于平台前缀)'}</span>
+                  {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#6b7cff]" /> : <Sparkles className="w-3.5 h-3.5 text-[#6b7cff]" />}
                 </button>
 
                 <button
                   onClick={() => handleClearTarget('all')}
                   disabled={loading}
-                  className="w-full py-3 px-3 bg-[#ff6b57] hover:bg-[#e05643] text-white font-bold text-xs rounded flex items-center justify-center gap-2 transition-colors cursor-pointer mt-2"
+                  className="w-full py-3 px-3 bg-[#ff6b57] hover:bg-[#e05643] text-white font-bold text-xs rounded flex items-center justify-center gap-2 transition-colors cursor-pointer mt-2 disabled:opacity-50"
                 >
-                  <Trash2 className="w-4 h-4" />
-                  <span>一键清空全部云端数据 (课表 + 作业 + 任务)</span>
+                  {loading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
+                  <span>{loading ? '正在清理全部数据...' : '一键清空全部云端数据 (课表 + 作业 + 任务)'}</span>
                 </button>
               </div>
             </div>

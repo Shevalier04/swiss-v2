@@ -307,17 +307,21 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
       return (title || '')
         .replace(/^\[.*?\]\s*/, '')
         .replace(/^(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)[\s:：-]*/i, '')
+        .replace(/实验[3三]/g, '实验三')
         .trim()
         .toLowerCase();
     };
 
     for (const h of raw) {
-      const courseKey = (h.course || '常规课程').trim().toLowerCase();
+      let courseName = (h.course || '常规课程').trim();
+      if (courseName.toLowerCase() === 'java web') courseName = 'Web编程技术';
+      const courseKey = courseName.toLowerCase();
+      
       const cleanTitle = getCleanTitle(h.title);
       const compositeKey = `${courseKey}__${cleanTitle}`;
 
       if (!map.has(compositeKey)) {
-        map.set(compositeKey, { ...h });
+        map.set(compositeKey, { ...h, course: courseName });
       } else {
         const existing = map.get(compositeKey)!;
         const isCurrentPrefixed = /^(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)[\s:：-]*/i.test(h.title.trim());
