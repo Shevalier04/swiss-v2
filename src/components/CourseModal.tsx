@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { Course } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Course, Homework } from '../types';
 import { WEEKDAYS, SLOTS, PALETTE, isWeeksOverlap } from '../utils/time';
-import { X, Trash2 } from 'lucide-react';
+import { X, Trash2, Check } from 'lucide-react';
 
 interface CourseModalProps {
   course: Course | null;
   preset?: { day: number; s: number; e: number; weeks?: string } | null;
   existingCourses: Course[];
+  homework?: Homework[];
+  onToggleHomework?: (id: number) => void;
   onSave: (courseData: Omit<Course, 'id'>, id?: number) => Promise<void>;
   onDelete?: (id: number) => Promise<void>;
   onClose: () => void;
@@ -17,6 +19,8 @@ export const CourseModal: React.FC<CourseModalProps> = ({
   course,
   preset,
   existingCourses,
+  homework,
+  onToggleHomework,
   onSave,
   onDelete,
   onClose,
@@ -32,6 +36,15 @@ export const CourseModal: React.FC<CourseModalProps> = ({
   const [endSlot, setEndSlot] = useState(2);
   const [color, setColor] = useState(PALETTE[0]);
   const [saving, setSaving] = useState(false);
+
+  const courseHomework = useMemo(() => {
+    if (!course || !homework) return [];
+    const cName = course.name.trim().toLowerCase();
+    return homework.filter(h => {
+      const hCourse = (h.course || '常规课程').trim().toLowerCase();
+      return hCourse === cName || cName.includes(hCourse) || hCourse.includes(cName);
+    });
+  }, [course, homework]);
 
   useEffect(() => {
     if (course) {
@@ -160,6 +173,51 @@ export const CourseModal: React.FC<CourseModalProps> = ({
             <div className="flex justify-between py-1.5">
               <span className="text-[#8f8b80]">授课教师</span>
               <span className="font-bold">{course.teacher || '待定'}</span>
+            </div>
+
+            {/* Course Homework Section */}
+            <div className="pt-3 pb-1">
+              <div className="font-bold text-[11px] uppercase tracking-wider text-[#8f8b80] mb-2 flex items-center justify-between">
+                <span>相关作业记录 ({courseHomework.length})</span>
+              </div>
+              {courseHomework.length === 0 ? (
+                <div className="py-3 text-center text-xs text-[#8f8b80] bg-[#1d1f24] rounded-lg border border-[#33363d]">
+                  当前课程暂无作业记录
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                  {courseHomework.map(item => (
+                    <div
+                      key={item.id}
+                      className={`flex items-center justify-between p-2.5 rounded-lg bg-[#1d1f24] border border-[#33363d] transition-all ${
+                        item.done ? 'opacity-50' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <button
+                          type="button"
+                          onClick={() => onToggleHomework?.(item.id)}
+                          className={`w-4 h-4 rounded-[3px] border-2 flex items-center justify-center shrink-0 cursor-pointer ${
+                            item.done ? 'bg-[#e9e4d8] border-[#e9e4d8] text-[#1d1f24]' : 'border-[#e9e4d8]'
+                          }`}
+                        >
+                          {item.done ? <Check className="w-3 h-3 stroke-[3]" /> : null}
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <div className={`text-xs font-semibold truncate ${item.done ? 'line-through text-[#8f8b80]' : 'text-[#e9e4d8]'}`}>
+                            {item.title}
+                          </div>
+                          {item.due ? (
+                            <div className="text-[10px] text-[#8f8b80] font-mono mt-0.5">
+                              截止: {item.due}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="pt-4 flex gap-2.5">

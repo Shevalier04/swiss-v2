@@ -1,43 +1,21 @@
-# Persistent Floating Pomodoro Widget Implementation Plan
+# Course Timetable Modal Homework Integration Implementation Plan
 
-Implement a persistent, floating Pomodoro timer widget that stays active on screen even when the user navigates away or the app is in the background, continuing to tick until manually stopped, and only closing when explicitly clicked via its close ('X') button.
+Enhance the course details modal (opened when clicking a subject in the Timetable) to display a dedicated assignment card list with completion status, due dates, and direct checkbox toggling for that specific course.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> - **Persistent Floating Widget**: Will float on top of all views (bottom-right corner by default with drag support).
-> - **Background Persistence**: Timer continues running across tab/view switches and background states.
-> - **Explicit Close vs Stop**: Clicking 'X' minimizes/closes the floating widget (while timer continues running in the background state); clicking "Stop" or "Reset" inside the timer fully stops the session.
+> - **Course Homework Section**: When clicking a course in the timetable, the course modal will display all homework assignments associated with that course name.
+> - **Interactive Toggling**: Users can check off homework directly within the course modal with real-time state sync.
 
 ## 1. Overview & Core Concept
 
-- **What It Does**: Elevates the Pomodoro timer into a floating, persistent overlay widget that floats at the bottom-right of the screen. It can be dragged around, minimized/closed via 'X' (without stopping the active timer), and keeps running continuously across views until manually stopped or completed.
-- **Key Value**: Allows students and professionals to keep track of their study/work focus sessions anywhere in the app without interrupting their countdown when switching tabs.
+- **What It Does**: When a user clicks a course card in the timetable (`TimetableTab.tsx` / `CourseModal.tsx`), the modal displays a dedicated "课程相关作业" (Course Assignments) section listing brief titles, deadlines, and interactive completion checkboxes.
+- **Key Value**: Streamlines the workflow so students can instantly view and check off homework tied to a specific class right from their timetable view.
 
-## 2. User Experience & Visual Design
+## 2. Technical Architecture & Data Strategy
 
-- **Floating Widget UI**:
-  - Compact, sleek pill/card floating widget pinned to bottom-right (`fixed bottom-6 right-6 z-50`).
-  - Displays countdown MM:SS, current mode (Focus / Short Break / Long Break), active task name, and playback controls (Start/Pause, Stop, Close 'X', Expand/Collapse).
-  - Drag support via header handle so users can reposition it anywhere on screen.
-- **Visual Identity**: Dark glassy backdrop (`bg-[#181a20]/95 backdrop-blur-md border border-[#6b7cff]/40 shadow-xl rounded-2xl p-3.5 text-white`) matching the app's aesthetic.
-
-## 3. Technical Architecture & Data Strategy
-
-```
-┌────────────────────────────────────────────────────────┐
-│                   App-Level State / Context            │
-│  - pomodoroTimeRemaining, pomodoroRunning, pomodoroMode│
-│  - isFloatingWidgetOpen, floatingWidgetPosition        │
-└───────────┬────────────────────────────────────────────┘
-            │
-            ├────────────────────────────────────────────┐
-            ▼                                            ▼
-┌───────────────────────┐                    ┌───────────────────────┐
-│     PomodoroTab       │                    │  PersistentFloating   │
-│  (Full Timer View)    │                    │     PomodoroWidget    │
-└───────────────────────┘                    └───────────────────────┘
-```
-
-- **State Persistence**: Store timer state and floating widget visibility (`isFloatingWidgetOpen`, timer start timestamp / remaining seconds) in React state or localStorage/global context so it persists across tab switches and background states.
-- **Timer Engine**: Use a robust `setInterval` / `requestAnimationFrame` or timestamp-based diff calculation so background timing stays accurate.
+- **Component Updates (`CourseModal.tsx`)**:
+  - Accept `homework` prop (list of all homework items).
+  - Filter homework items matching `activeCourse.name`.
+  - Render an assignment card list inside the modal with completion toggles (`onToggleHomework`).

@@ -1038,6 +1038,8 @@ export default function App() {
           course={activeCourseModal}
           preset={coursePreset}
           existingCourses={courses}
+          homework={homework}
+          onToggleHomework={handleToggleHw}
           onSave={handleSaveCourse}
           onDelete={handleDeleteCourse}
           onClose={() => {

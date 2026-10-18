@@ -323,11 +323,14 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
         const isCurrentPrefixed = /^(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)[\s:：-]*/i.test(h.title.trim());
         const isExistingPrefixed = /^(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)[\s:：-]*/i.test(existing.title.trim());
 
-        if (isExistingPrefixed && !isCurrentPrefixed) {
+        // Prioritize and keep the version with the platform prefix
+        if (!isExistingPrefixed && isCurrentPrefixed) {
           existing.title = h.title;
+          if (h.due) existing.due = h.due;
+        } else if (h.due && !existing.due) {
+          existing.due = h.due;
         }
         if (h.done) existing.done = true;
-        if (!existing.due && h.due) existing.due = h.due;
       }
     }
 

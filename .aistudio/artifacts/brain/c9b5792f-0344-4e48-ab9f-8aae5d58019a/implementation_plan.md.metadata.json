@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan for persistent floating Pomodoro widget that remains active in background and runs continuously until manually stopped.",
-  "updatedAt": "2026-10-17T17:18:30.325066171Z",
+  "summary": "Implementation plan for displaying course-specific homework items inside the course timetable modal with direct completion toggling.",
+  "updatedAt": "2026-10-18T02:54:30.948675931Z",
   "requestFeedback": true,
   "userFacing": true
 }
