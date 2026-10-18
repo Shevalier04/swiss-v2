@@ -52,7 +52,7 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
     setLoading(true);
     try {
       const allHomework = await api.getHomework();
-      const map = new Map<string, Homework>();
+      const map = new Map<string, Homework[]>();
       const getCleanTitle = (title: string) => {
         return (title || '')
           .replace(/^\[.*?\]\s*/, '')
@@ -61,56 +61,64 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
           .toLowerCase();
       };
 
-      // Identify items to keep and items to delete
-      const toKeepIds = new Set<number>();
-      const toDeleteIds = new Set<number>();
-
+      // Group all items by course + clean title
       for (const h of allHomework) {
         const courseKey = (h.course || '常规课程').trim().toLowerCase();
         const cleanTitle = getCleanTitle(h.title);
         const compositeKey = `${courseKey}__${cleanTitle}`;
 
         if (!map.has(compositeKey)) {
-          map.set(compositeKey, { ...h });
-          toKeepIds.add(h.id);
-        } else {
-          const existing = map.get(compositeKey)!;
-          const isCurrentPrefixed = /^(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)[\s:：-]*/i.test(h.title.trim());
-          const isExistingPrefixed = /^(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)[\s:：-]*/i.test(existing.title.trim());
-
-          // Logic to keep the prefixed version and merge
-          if (!isExistingPrefixed && isCurrentPrefixed) {
-            toDeleteIds.add(existing.id);
-            map.set(compositeKey, { ...h });
-            toKeepIds.add(h.id);
-            toDeleteIds.delete(h.id);
-          } else {
-            toDeleteIds.add(h.id);
-            if (h.done) existing.done = true;
-            if (h.due && !existing.due) existing.due = h.due;
-          }
+          map.set(compositeKey, []);
         }
+        map.get(compositeKey)!.push(h);
       }
 
-      // Delete all identified duplicates
+      const toDeleteIds: number[] = [];
+
+      // Process each group
+      for (const [key, items] of map.entries()) {
+        if (items.length <= 1) continue;
+
+        // Sort: longest title first, then prefixed first
+        items.sort((a, b) => {
+          const aLen = a.title.length;
+          const bLen = b.title.length;
+          if (bLen !== aLen) return bLen - aLen;
+          
+          const aPrefixed = /^(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)/i.test(a.title);
+          const bPrefixed = /^(学习通|超星学习通|课堂派|PTA|明理云盘|云盘)/i.test(b.title);
+          return bPrefixed === aPrefixed ? 0 : bPrefixed ? 1 : -1;
+        });
+
+        const keeper = items[0];
+        const duplicates = items.slice(1);
+
+        // Merge attributes into keeper
+        let mergedDone = keeper.done;
+        let mergedDue = keeper.due;
+        
+        for (const dup of duplicates) {
+          toDeleteIds.push(dup.id);
+          if (dup.done) mergedDone = true;
+          if (dup.due && !mergedDue) mergedDue = dup.due;
+        }
+
+        // Update keeper
+        await api.updateHomework(keeper.id, {
+          done: mergedDone,
+          due: mergedDue,
+          course: keeper.course,
+          title: keeper.title
+        });
+      }
+
+      // Delete all duplicates
       for (const id of toDeleteIds) {
         await api.deleteHomework(id);
       }
 
-      // Update the merged items to ensure status and due dates are persisted
-      for (const h of map.values()) {
-        if (toKeepIds.has(h.id)) {
-          await api.updateHomework(h.id, {
-            done: h.done,
-            due: h.due,
-            course: h.course,
-            title: h.title
-          });
-        }
-      }
-
       await onRefresh();
-      toast(`清理完成，已合并 ${toDeleteIds.size} 项重复作业`);
+      toast(`清理完成，已合并不完整作业，共删除 ${toDeleteIds.length} 条重复记录`);
     } catch (e: any) {
       toast(e.message || '清理作业失败');
     } finally {
