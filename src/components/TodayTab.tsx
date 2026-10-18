@@ -224,7 +224,7 @@ export const TodayTab: React.FC<TodayTabProps> = ({
         <div className="bg-[#2a2c33] border-2 border-[#e9e4d8] p-3 text-xs flex items-start gap-2.5 leading-relaxed rounded text-[#d8d4c8] shadow-sm">
           <Bell className="w-4 h-4 text-[#6b7cff] shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <span className="font-bold text-[#e9e4d8]">【系统通知】</span>
+            <span className="font-bold text-[#e9e4d8]">【公告】</span>
             <span>{activeNotice.text}</span>
           </div>
           <button
