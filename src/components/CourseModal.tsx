@@ -39,10 +39,20 @@ export const CourseModal: React.FC<CourseModalProps> = ({
 
   const courseHomework = useMemo(() => {
     if (!course || !homework) return [];
-    const cName = course.name.trim().toLowerCase();
+    
+    // Normalize course names
+    const normalize = (name: string) => {
+      let n = name.trim().toLowerCase();
+      if (n === 'java web') return 'web编程技术';
+      return n;
+    };
+
+    const cName = normalize(course.name);
+    
     return homework.filter(h => {
-      const hCourse = (h.course || '常规课程').trim().toLowerCase();
-      return hCourse === cName || cName.includes(hCourse) || hCourse.includes(cName);
+      const hCourse = normalize(h.course || '常规课程');
+      // Use exact match after normalization
+      return hCourse === cName;
     });
   }, [course, homework]);
 

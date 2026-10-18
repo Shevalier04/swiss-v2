@@ -681,14 +681,17 @@ export default function App() {
   };
 
   const handleClearData = async () => {
+    if (!window.confirm('确定要清空所有课表与数据吗？此操作不可撤销。')) return;
+
     try {
+      showToast('正在清空数据，请稍候...');
       await api.batchReplaceCourses([]);
       for (const h of homework) await api.deleteHomework(h.id);
       for (const t of tasks) await api.deleteTask(t.id);
       await loadAllUserData();
-      showToast('所有数据已清空');
+      showToast('所有数据已成功清空');
     } catch (e: any) {
-      showToast(e.message || '清空失败');
+      showToast(e.message || '清空失败，请重试');
     }
   };
 
