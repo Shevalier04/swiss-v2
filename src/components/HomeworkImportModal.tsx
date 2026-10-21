@@ -334,7 +334,7 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
       await api.clearConsoleHomeworkTemplates();
       setTemplates([]);
       setSelectedIds(new Set());
-      toast('官方作业池已清空');
+      toast('官方作业池 D1 数据已彻底清空并同步');
     } catch (e: any) {
       toast(`清空失败: ${e.message}`);
     } finally {
@@ -354,7 +354,7 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
         next.delete(id);
         return next;
       });
-      toast('已从官方作业池移除该条目');
+      toast('已从官方作业池 D1 数据中移除该条目');
     } catch (e: any) {
       toast(`删除失败: ${e.message}`);
     }

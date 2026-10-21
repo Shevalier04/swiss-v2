@@ -356,10 +356,27 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
     toast('已生成并下载 JSON 完整备份文件');
   };
 
+  const [poolCount, setPoolCount] = useState<number>(0);
+
+  React.useEffect(() => {
+    api.getConsoleHomeworkTemplates()
+      .then(list => setPoolCount(Array.isArray(list) ? list.length : 0))
+      .catch(() => {});
+  }, []);
+
   // 4. Clear
-  const handleClearTarget = async (target: 'courses' | 'assignments' | 'tasks' | 'all') => {
+  const handleClearTarget = async (target: 'courses' | 'assignments' | 'tasks' | 'pool' | 'all') => {
     const targetName =
-      target === 'courses' ? '课程表' : target === 'assignments' ? '作业' : target === 'tasks' ? '待办任务' : '全部云端数据';
+      target === 'courses'
+        ? '课程表'
+        : target === 'assignments'
+        ? '全部作业及官方作业池'
+        : target === 'tasks'
+        ? '待办任务'
+        : target === 'pool'
+        ? 'D1 官方作业池 (homework_pool)'
+        : '全部云端数据（含 D1 官方作业池）';
+
     if (!window.confirm(`确定要清空云端数据库中的【${targetName}】吗？此操作不可逆！`)) {
       return;
     }
@@ -370,10 +387,19 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
         await api.clearAllCourses();
       }
       if (target === 'assignments' || target === 'all') {
-        await api.clearAllHomework();
+        await api.clearAllHomework(true);
+        setPoolCount(0);
       }
       if (target === 'tasks' || target === 'all') {
         await api.clearAllTasks();
+      }
+      if (target === 'pool') {
+        await api.clearConsoleHomeworkTemplates();
+        setPoolCount(0);
+      }
+      if (target === 'all') {
+        await api.clearConsoleHomeworkTemplates().catch(() => {});
+        setPoolCount(0);
       }
       await onRefresh();
       toast(`已成功清空${targetName}`);
@@ -704,8 +730,23 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
                   disabled={loading}
                   className="w-full py-2.5 px-3 bg-[#24262c] hover:bg-[#ff6b57]/20 border border-[#33363d] hover:border-[#ff6b57] rounded text-left text-xs text-[#e9e4d8] flex items-center justify-between transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  <span>{loading ? '正在清理...' : `清空全部云端作业 (${homework.length} 项)`}</span>
-                  {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#ff6b57]" /> : <Trash2 className="w-3.5 h-3.5 text-[#ff6b57]" />}
+                  <div className="flex items-center gap-1.5 truncate">
+                    <Trash2 className="w-3.5 h-3.5 text-[#ff6b57] shrink-0" />
+                    <span>{loading ? '正在清理...' : `清空全部作业与 D1 官方作业池 (${homework.length} 项已录入)`}</span>
+                  </div>
+                  {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#ff6b57] shrink-0" /> : <span className="text-[10px] text-[#ff6b57] font-mono shrink-0">双端清空</span>}
+                </button>
+
+                <button
+                  onClick={() => handleClearTarget('pool')}
+                  disabled={loading}
+                  className="w-full py-2.5 px-3 bg-[#24262c] hover:bg-[#ff6b57]/20 border border-[#33363d] hover:border-[#ff6b57] rounded text-left text-xs text-[#e9e4d8] flex items-center justify-between transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-1.5 truncate">
+                    <Cloud className="w-3.5 h-3.5 text-[#6b7cff] shrink-0" />
+                    <span>{loading ? '正在清理...' : `清空 D1 官方作业池 (homework_pool · ${poolCount} 项)`}</span>
+                  </div>
+                  {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#6b7cff] shrink-0" /> : <span className="text-[10px] text-[#6b7cff] font-mono shrink-0">重置官方池</span>}
                 </button>
 
                 <button
@@ -713,8 +754,11 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
                   disabled={loading}
                   className="w-full py-2.5 px-3 bg-[#24262c] hover:bg-[#ff6b57]/20 border border-[#33363d] hover:border-[#ff6b57] rounded text-left text-xs text-[#e9e4d8] flex items-center justify-between transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  <span>{loading ? '正在清理...' : `清空全部云端任务 (${tasks.length} 条)`}</span>
-                  {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#ff6b57]" /> : <Trash2 className="w-3.5 h-3.5 text-[#ff6b57]" />}
+                  <div className="flex items-center gap-1.5 truncate">
+                    <Trash2 className="w-3.5 h-3.5 text-[#ff6b57] shrink-0" />
+                    <span>{loading ? '正在清理...' : `清空全部云端任务 (${tasks.length} 条)`}</span>
+                  </div>
+                  {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#ff6b57] shrink-0" /> : <span className="text-[10px] text-[#8f8b80] font-mono shrink-0">单项清空</span>}
                 </button>
 
                 <button
@@ -722,21 +766,24 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
                   disabled={loading}
                   className="w-full py-2.5 px-3 bg-[#6b7cff]/10 hover:bg-[#6b7cff]/20 border border-[#6b7cff]/30 hover:border-[#6b7cff]/60 rounded text-left text-xs text-[#e9e4d8] flex items-center justify-between transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  <span>{loading ? '正在合并...' : '智能合并重复作业 (基于平台前缀)'}</span>
-                  {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#6b7cff]" /> : <Sparkles className="w-3.5 h-3.5 text-[#6b7cff]" />}
+                  <div className="flex items-center gap-1.5 truncate">
+                    <Sparkles className="w-3.5 h-3.5 text-[#6b7cff] shrink-0" />
+                    <span>{loading ? '正在合并...' : '智能合并重复作业 (基于平台前缀与变体)'}</span>
+                  </div>
+                  {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#6b7cff] shrink-0" /> : <span className="text-[10px] text-[#6b7cff] font-mono shrink-0">一键去重</span>}
                 </button>
 
                 <button
                   onClick={() => handleClearTarget('all')}
                   disabled={loading}
-                  className="w-full py-3 px-3 bg-[#ff6b57] hover:bg-[#e05643] text-white font-bold text-xs rounded flex items-center justify-center gap-2 transition-colors cursor-pointer mt-2 disabled:opacity-50"
+                  className="w-full py-3 px-3 bg-[#ff6b57] hover:bg-[#e05643] text-white font-bold text-xs rounded flex items-center justify-center gap-2 transition-colors cursor-pointer mt-2 disabled:opacity-50 shadow-md"
                 >
                   {loading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <Trash2 className="w-4 h-4" />
                   )}
-                  <span>{loading ? '正在清理全部数据...' : '一键清空全部云端数据 (课表 + 作业 + 任务)'}</span>
+                  <span>{loading ? '正在清理全部数据...' : '一键清空全部云端数据 (课表 + 作业 + 任务 + D1官方作业池)'}</span>
                 </button>
               </div>
             </div>

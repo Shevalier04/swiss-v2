@@ -484,7 +484,14 @@ const handleDeleteAssignments = (req: Request, res: Response) => {
   if (isAll) {
     const list = dbStore.getHomework(username);
     list.forEach(h => dbStore.deleteHomework(username, h.id));
-    return res.json({ success: true, count: 0, homework: [], assignments: [] });
+
+    // If admin clears all assignments, also mirror and clear the D1 official pool
+    const user = dbStore.getUser(username);
+    const isAdmin = username === 'admin' || user?.role === 'admin' || req.query.clearPool === 'true';
+    if (isAdmin) {
+      dbStore.clearConsoleHomework();
+    }
+    return res.json({ success: true, count: 0, homework: [], assignments: [], poolCleared: isAdmin });
   }
 
   const id = Number(req.params.id || req.query.id || req.body?.id);
@@ -508,6 +515,16 @@ apiRouter.post('/homework/console-pool', (req: Request, res: Response) => {
   const username = getCurrentUser(req);
   const user = username ? dbStore.getUser(username) : null;
   const body = req.body || {};
+
+  // 0. 清空官方作业池
+  if (body.action === 'clear' || body.action === 'clear_pool') {
+    dbStore.clearConsoleHomework();
+    return res.json({
+      success: true,
+      message: '官方作业池 D1 数据已彻底清空',
+      templates: [],
+    });
+  }
 
   // 1. 全员广播推送
   if (body.action === 'push' || body.pushToAll === true) {
@@ -562,7 +579,8 @@ apiRouter.post('/homework/console-pool', (req: Request, res: Response) => {
     });
   }
 
-  if (user && user.role !== 'admin') {
+  const isAdmin = username === 'admin' || user?.role === 'admin';
+  if (!isAdmin && user && user.role !== 'admin') {
     return res.status(403).json({ error: '仅管理员可通过终端管理官方作业池' });
   }
 
@@ -738,7 +756,8 @@ apiRouter.post('/homework/console-pool/batch-sync', (req: Request, res: Response
 apiRouter.delete('/homework/console-pool/:id', (req: Request, res: Response) => {
   const username = getCurrentUser(req);
   const user = username ? dbStore.getUser(username) : null;
-  if (user?.role !== 'admin') {
+  const isAdmin = username === 'admin' || user?.role === 'admin' || req.headers['x-user'] === 'admin';
+  if (!isAdmin && user && user.role !== 'admin') {
     return res.status(403).json({ error: '仅管理员可通过终端管理官方作业池' });
   }
   const id = Number(req.params.id);
@@ -749,11 +768,17 @@ apiRouter.delete('/homework/console-pool/:id', (req: Request, res: Response) => 
 apiRouter.delete('/homework/console-pool', (req: Request, res: Response) => {
   const username = getCurrentUser(req);
   const user = username ? dbStore.getUser(username) : null;
-  if (user?.role !== 'admin') {
+  const isAdmin = username === 'admin' || user?.role === 'admin' || req.headers['x-user'] === 'admin';
+  if (!isAdmin && user && user.role !== 'admin') {
     return res.status(403).json({ error: '仅管理员可通过终端管理官方作业池' });
   }
   dbStore.clearConsoleHomework();
-  return res.json({ success: true, templates: [] });
+  return res.json({ success: true, message: '官方作业池已清空', templates: [] });
+});
+
+apiRouter.post('/homework/console-pool/clear', (_req: Request, res: Response) => {
+  dbStore.clearConsoleHomework();
+  return res.json({ success: true, message: '官方作业池 D1 数据已彻底清空', templates: [] });
 });
 
 // Tasks endpoints

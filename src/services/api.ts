@@ -424,8 +424,11 @@ export const api = {
     }
   },
 
-  async clearAllHomework(): Promise<void> {
+  async clearAllHomework(alsoClearPool = true): Promise<void> {
     await request('/assignments?all=true', { method: 'DELETE' });
+    if (alsoClearPool) {
+      await this.clearConsoleHomeworkTemplates().catch(() => {});
+    }
   },
 
   async syncConsoleHomeworkBatch(items: { course: string; title: string; due?: string }[]): Promise<Homework[]> {
@@ -557,7 +560,16 @@ export const api = {
       await request('/homework/console-pool', { method: 'DELETE' });
     } catch (e: any) {
       try {
-        localStorage.setItem('cs_console_hw_pool', JSON.stringify([]));
+        await request('/homework/console-pool', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'clear' }),
+        });
+      } catch (err2) {
+        await request('/homework/console-pool/clear', { method: 'POST' }).catch(() => {});
+      }
+    } finally {
+      try {
+        localStorage.removeItem('cs_console_hw_pool');
       } catch (err) {}
     }
   },

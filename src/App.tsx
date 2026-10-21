@@ -558,6 +558,29 @@ export default function App() {
     setHomework(list);
   };
 
+  const handleClearCompletedHw = async () => {
+    const completedItems = homework.filter(h => h.done);
+    if (completedItems.length === 0) {
+      showToast('当前没有已完成的作业');
+      return;
+    }
+    const count = completedItems.length;
+    setHomework(prev => prev.filter(h => !h.done));
+    try {
+      showToast(`正在批量清理 ${count} 项已完成作业...`);
+      for (const item of completedItems) {
+        await api.deleteHomework(item.id).catch(() => {});
+      }
+      const fresh = await api.getHomework();
+      setHomework(fresh);
+      showToast(`已成功清理 ${count} 项已完成作业`);
+    } catch (e: any) {
+      const fresh = await api.getHomework();
+      setHomework(fresh);
+      showToast('清理已完成作业失败');
+    }
+  };
+
   const handleUpdateHomework = async (id: number, data: { course: string; title: string; due: string }) => {
     const updated = await api.updateHomework(id, data);
     setHomework(prev => prev.map(h => (Number(h.id) === Number(id) ? updated : h)));
@@ -903,6 +926,7 @@ export default function App() {
               onBatchAdd={handleBatchAddHw}
               onToggle={handleToggleHw}
               onDelete={handleDeleteHw}
+              onClearCompleted={handleClearCompletedHw}
               onUpdate={handleUpdateHomework}
               onAddTask={handleAddTask}
               onJumpToFocusTask={handleJumpToFocusTask}

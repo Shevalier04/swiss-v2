@@ -40,6 +40,7 @@ interface HomeworkTabProps {
   onBatchAdd?: (items: { course: string; title: string; due?: string }[]) => Promise<void>;
   onToggle: (id: number) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
+  onClearCompleted?: () => Promise<void>;
   onAddTask?: (title: string) => Promise<void>;
   onJumpToFocusTask?: (taskTitle: string) => void;
   onImportPreset?: () => void;
@@ -56,6 +57,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
   onBatchAdd,
   onToggle,
   onDelete,
+  onClearCompleted,
   onAddTask,
   onJumpToFocusTask,
   onImportPreset,
@@ -63,6 +65,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
   toast,
 }) => {
   const [filter, setFilter] = useState<'all' | 'todo' | 'done'>('all');
+  const [clearingCompleted, setClearingCompleted] = useState(false);
 
   // Course Category & Grouping View States
   const [selectedCourseFilter, setSelectedCourseFilter] = useState<string>('all');
