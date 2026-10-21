@@ -26,6 +26,8 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  X,
+  AlertTriangle,
 } from 'lucide-react';
 import { HomeworkImportModal } from './HomeworkImportModal';
 import { SmartHomeworkPasteModal } from './SmartHomeworkPasteModal';
@@ -66,6 +68,7 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
 }) => {
   const [filter, setFilter] = useState<'all' | 'todo' | 'done'>('all');
   const [clearingCompleted, setClearingCompleted] = useState(false);
+  const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
 
   // Course Category & Grouping View States
   const [selectedCourseFilter, setSelectedCourseFilter] = useState<string>('all');
@@ -392,6 +395,24 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
     }
     return map;
   }, [effectiveHomework]);
+
+  // Total completed homework count across all courses
+  const completedCount = useMemo(() => {
+    return effectiveHomework.filter(h => h.done).length;
+  }, [effectiveHomework]);
+
+  const handleBatchClearCompleted = async () => {
+    if (!onClearCompleted) return;
+    setClearingCompleted(true);
+    try {
+      await onClearCompleted();
+      setShowClearConfirmModal(false);
+    } catch (err: any) {
+      toast(err?.message || '清理已完成作业失败，请重试');
+    } finally {
+      setClearingCompleted(false);
+    }
+  };
 
   // Filtered list by status (all/todo/done) AND selected course category with due date sorting
   const filteredList = useMemo(() => {
@@ -919,7 +940,26 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
                         filter === f ? 'text-[#e9e4d8] font-bold' : 'text-[#8f8b80]'
                       }`}
                     >
-                      {f === 'all' ? '全部状态' : f === 'todo' ? '未完成' : '已完成'}
+                      {f === 'all' ? (
+                        '全部状态'
+                      ) : f === 'todo' ? (
+                        '未完成'
+                      ) : (
+                        <span className="flex items-center gap-1.5">
+                          <span>已完成</span>
+                          {completedCount > 0 && (
+                            <span
+                              className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-normal ${
+                                filter === 'done'
+                                  ? 'bg-[#ff6b57]/25 text-[#ff6b57]'
+                                  : 'bg-[#2b2e38] text-[#8f8b80]'
+                              }`}
+                            >
+                              {completedCount}
+                            </span>
+                          )}
+                        </span>
+                      )}
                       {filter === f && (
                         <span className="absolute left-2 right-2 -bottom-0.5 h-0.5 bg-[#6b7cff]" />
                       )}
@@ -927,8 +967,21 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
                   ))}
                 </div>
 
-                {/* Right Toolbar: Due Date Sort + View Mode Switcher */}
+                {/* Right Toolbar: Batch Clear (when done filter active) + Due Date Sort + View Mode Switcher */}
                 <div className="flex items-center gap-1.5 mb-1 flex-wrap justify-end">
+                  {/* Batch Clear Completed Button */}
+                  {filter === 'done' && completedCount > 0 && onClearCompleted && (
+                    <button
+                      type="button"
+                      onClick={() => setShowClearConfirmModal(true)}
+                      disabled={clearingCompleted}
+                      className="px-2.5 py-1 rounded-lg flex items-center gap-1.5 bg-[#ff6b57]/15 border border-[#ff6b57]/40 text-[#ff6b57] hover:bg-[#ff6b57]/25 hover:border-[#ff6b57]/60 active:scale-95 transition-all text-[11px] font-mono font-bold cursor-pointer shadow-xs disabled:opacity-50"
+                      title={`批量永久清理 ${completedCount} 项已完成作业`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>批量清理已完成 ({completedCount})</span>
+                    </button>
+                  )}
                   {/* Due Date Sort Controls */}
                   <div className="flex items-center gap-0.5 bg-[#181a20] p-1 rounded-lg border border-[#2e313d] text-[11px] font-mono">
                     <span className="text-[#8f8b80] pl-1.5 pr-1 flex items-center gap-1 text-[10.5px]">
@@ -1191,6 +1244,83 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
           onClose={() => setEditingHomework(null)}
           toast={toast}
         />
+      )}
+
+      {/* Batch Clear Completed Confirmation Modal */}
+      {showClearConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-[#181a20] border-2 border-[#ff6b57]/40 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-scale-up">
+            {/* Header */}
+            <div className="px-5 py-4 bg-[#231b1e] border-b border-[#3d2328] flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-[#ff6b57]/20 border border-[#ff6b57]/40 flex items-center justify-center text-[#ff6b57]">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-[#e9e4d8] text-sm">批量清理已完成作业</h3>
+                  <p className="text-[10px] text-[#ff6b57]/80 font-mono tracking-wider">CONFIRM BATCH CLEANUP</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !clearingCompleted && setShowClearConfirmModal(false)}
+                disabled={clearingCompleted}
+                className="text-[#8f8b80] hover:text-[#e9e4d8] p-1 rounded-lg hover:bg-[#2e313d] transition-colors cursor-pointer disabled:opacity-40"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-5 space-y-4">
+              <div className="p-3.5 rounded-xl bg-[#231b1e]/60 border border-[#ff6b57]/25 text-xs text-[#c8c4b8] space-y-2">
+                <p className="leading-relaxed">
+                  确定要批量清理已完成的作业吗？
+                </p>
+                <div className="p-2.5 rounded-lg bg-[#181a20] border border-[#ff6b57]/30 text-xs">
+                  <span className="text-[#8f8b80]">即将从所有课程中永久移除：</span>
+                  <div className="mt-1 text-sm font-bold text-[#ff6b57] font-mono flex items-center gap-1.5">
+                    <Trash2 className="w-4 h-4" />
+                    <span>{completedCount} 项已完成作业</span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-[#8f8b80] leading-normal">
+                  💡 清理后可使课表作业列表保持精简，该操作将直接同步更新并移除云端数据，不可撤销。
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowClearConfirmModal(false)}
+                  disabled={clearingCompleted}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-[#8f8b80] hover:text-[#e9e4d8] hover:bg-[#252834] transition-colors cursor-pointer disabled:opacity-40"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBatchClearCompleted}
+                  disabled={clearingCompleted}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-[#ff6b57] text-white hover:bg-[#e05642] active:scale-95 transition-all shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+                >
+                  {clearingCompleted ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>正在清理...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>确认清理全部 ({completedCount})</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

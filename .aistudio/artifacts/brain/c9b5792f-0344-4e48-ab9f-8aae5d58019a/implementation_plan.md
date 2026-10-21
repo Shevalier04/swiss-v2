@@ -1,62 +1,53 @@
-# D1 官方作业池与管理员数据清空同步方案
+# 官方作业清单同步池（导入池）排序功能实施计划
 
-解决用户反馈的“D1数据库只能存不能清空，admin用户清空作业池时D1数据没有同步”问题。
-
----
-
-## 一、问题根因深度分析
-
-1. **接口权限与静默吞错导致 D1 未真实删除**：
-   - 现有的 `DELETE /homework/console-pool` 接口在校验管理员身份时过于严格，当请求头 token 解析异常或为缺省管理员标识时直接返回 403 拒绝。
-   - 前端 `api.clearConsoleHomeworkTemplates()` 在遇到 403 报错后，静默执行了 `localStorage.setItem('cs_console_hw_pool', '[]')` 本地兜底，使得界面暂时变空，但 **Cloudflare D1 后端实际并没有执行任何删除操作**，刷新页面后数据原封不动再次出现。
-2. **数据管理中心与作业池割裂**：
-   - 在“云端数据管理中心”（`DataManagementModal.tsx`）中，“清空全部云端作业”仅调用了 `/api/assignments?all=true`，只删除了 admin 用户的私有作业，**完全没有联动清空 D1 官方作业池（`homework_pool` / `consoleHomework`）**。
-   - 缺乏双向清空机制，导致管理员在数据中心清空了作业后，官方池中依然存留大量旧数据。
+## 1. 用户需求与确认要点
+- **功能目标**：为“官方作业清单同步”（HomeworkImportModal）列表增加排序功能，便于学生和教师根据紧迫度或科目清晰浏览并批量勾选导入。
+- **支持维度（基于答复）**：
+  1. **截止日期升序（紧迫优先）**：截止时间最近的作业排在最前；
+  2. **截止日期降序（远期在前）**：截止时间较晚的作业排在最前；
+  3. **按课程名称排序**：按科目字母/拼音自然归类排列；
+  4. **默认顺序**：保持云端作业池原录入顺序。
+- **默认排序（基于答复）**：打开弹窗时，默认按 **截止日期升序（紧迫优先）** 展示。
+- **UI 布局（基于答复）**：在搜索栏与课程筛选下拉框右侧，新增一个精致小巧的**排序下拉框（Compact Dropdown）**。
 
 ---
 
-## 二、架构设计与解决步骤
+## 2. 详细技术方案
 
-### 1. 后端清空接口加固 (`server/api.ts` & `server/store.ts`)
-- **权限判定宽容性与容错增强**：
-  - 允许 `username === 'admin'` 或 `user?.role === 'admin'` 均能合法执行官方池清空操作。
-  - 在 `POST /homework/console-pool` 中新增 `action: 'clear'` 支持，与 `DELETE /homework/console-pool` 双通道保障清空请求 100% 成功。
-  - 确保 `dbStore.clearConsoleHomework()` 彻底清空内存对象与 `timetable_db.json` 文件持久化。
-- **全量清空联动**：
-  - 当以管理员身份清空全部作业时（`/assignments?all=true`），支持同时清除 D1 官方作业池，实现真正的一键同步清空。
+### A. 状态与排序引擎 (`src/components/HomeworkImportModal.tsx`)
+1. **状态定义**：
+   ```tsx
+   export type ImportPoolSortType = 'due_asc' | 'due_desc' | 'course_asc' | 'original';
+   const [sortBy, setSortBy] = useState<ImportPoolSortType>('due_asc');
+   ```
+2. **多维排序算法 (`useMemo`)**：
+   - 提取截止时间解析函数，支持 `YYYY-MM-DD HH:mm`、`YYYY/MM/DD` 等各类型时间戳转换。
+   - 无明确截止时间（null/空）的条目统一置于末尾。
+   - `due_asc`（默认）：紧迫优先，`msA - msB`；若时间相同，按 ID 升序排列。
+   - `due_desc`：远期在前，`msB - msA`。
+   - `course_asc`：使用 `itemA.course.localeCompare(itemB.course, 'zh-CN')`，同课程内自动按截止时间排序。
+   - `original`：维持模板加载时的初始 ID 次序。
 
-### 2. 前端 API 交互加固 (`src/services/api.ts`)
-- **真实同步拒绝静默伪装**：
-  - 重构 `clearConsoleHomeworkTemplates()` 与 `clearAllHomework()`：优先请求后端真实删除，并在成功后再清理本地缓存；若网络或权限失败，向上抛出真实错误并由 Toast 告警，杜绝“假清空”。
-  - 增强 `clearAllHomework()`：管理员操作时自动联动清空官方作业池。
-
-### 3. 数据管理中心（DataManagementModal）功能扩充
-- **“清空重置”标签页扩充入口**：
-  1. **升级“清空全部云端作业”**：明确提示并执行“清空管理员作业及 D1 官方作业池”，双端一网打尽。
-  2. **新增独立按钮“清空 D1 官方作业池 (homework_pool)”**：专用于单独清空全局官方共享作业，不影响课表与待办。
-  3. **升级“一键清空全部云端数据”**：彻底清空课程、个人作业、待办任务以及 D1 官方作业池全部数据。
-
-### 4. 官方作业清单同步弹窗（HomeworkImportModal）体验闭环
-- 加固“清空官方作业池”按钮，执行后立即重置状态，并通知上层组件刷新，防止数据残留。
-
----
-
-## 三、文件修改清单
-
-1. **`server/api.ts` & `server/store.ts`**
-   - 优化 `DELETE /homework/console-pool` 与 `POST /homework/console-pool (action: 'clear')`。
-   - 联动管理员作业清空与官方作业池清空。
-2. **`src/services/api.ts`**
-   - 强化 `clearConsoleHomeworkTemplates` 与 `clearAllHomework`，保证与 D1 同步。
-3. **`src/components/DataManagementModal.tsx`**
-   - 在“清空重置”界面增加“清空 D1 官方作业池”专属控制项，并使作业清空全面覆盖 D1 池。
-4. **`src/components/HomeworkImportModal.tsx`**
-   - 加固清空按钮的操作反馈与即时状态同步。
+### B. 工具栏界面集成 (`src/components/HomeworkImportModal.tsx`)
+1. **紧凑型排序选择器**：
+   - 紧邻现有的课程分类选择器（`select`），风格完全对齐暗色瑞士设计：
+     - 背景色 `#141518`、边框 `#3a3d46`、字体大小 `text-xs`、高亮焦点 `#6b7cff`。
+   - 选项内容清晰易懂：
+     - `⏳ 截止紧迫优先 (默认)`
+     - `📅 截止远期在前`
+     - `📚 按课程名称排序`
+     - `🔄 原始录入顺序`
+2. **联动保持**：
+   - 排序与已有的模糊搜索（`searchQuery`）及课程过滤（`selectedCourseFilter`）无缝联动。
+   - 排序切换不影响已勾选状态（`selectedIds` 保持不变）。
 
 ---
 
-## 四、验证与验收标准
-
-1. **官方池清空验证**：管理员点击“清空官方作业池”，刷新页面后模态框中作业池数量归零，D1 数据库真实清空。
-2. **数据管理中心联动验证**：在“云端数据管理中心”点击清空作业或清空 D1 官方作业池后，两处列表均同步被清空。
-3. **重新转存验证**：清空后再录入新作业并转存，D1 数据库仅有新作业，不再有任何历史残留脏数据。
+## 3. 验证计划
+1. **编译检查**：调用 `compile_applet` 确保 TypeScript 类型与 JSX 构建通过。
+2. **语法检查**：调用 `lint_applet` 确保无 lint 报错。
+3. **功能验证**：
+   - 打开导入池时，确认第一条为截止时间最近的作业（如 `2026-10-19 10:00` 早于 `2026-10-26`）；
+   - 切换“截止远期在前”，确认最晚截止的作业排到顶部；
+   - 切换“按课程名称排序”，确认相同课程连续聚合；
+   - 测试结合搜索词与分类筛选时，排序均正常生效且全选/导入功能运作顺畅。

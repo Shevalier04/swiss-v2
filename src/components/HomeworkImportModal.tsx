@@ -22,7 +22,10 @@ import {
   CheckCircle2,
   Sparkles,
   ShieldCheck,
+  ArrowUpDown,
 } from 'lucide-react';
+
+export type ImportPoolSortType = 'due_asc' | 'due_desc' | 'course_asc' | 'original';
 
 export interface HomeworkTemplateItem {
   id: number;
@@ -125,6 +128,7 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
   const [importing, setImporting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCourseFilter, setSelectedCourseFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<ImportPoolSortType>('due_asc');
 
   // D1 Management Panel & SQL drawer state (Admin only)
   const [showAdminPanel, setShowAdminPanel] = useState(false);
@@ -216,8 +220,15 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
     });
   };
 
+  const parseTimeToMs = (dStr?: string) => {
+    if (!dStr) return null;
+    const normalized = dStr.replace(/-/g, '/');
+    const ms = new Date(normalized).getTime();
+    return isNaN(ms) ? null : ms;
+  };
+
   const filteredTemplates = useMemo(() => {
-    return templates.filter(item => {
+    const list = templates.filter(item => {
       if (selectedCourseFilter !== 'all' && item.course !== selectedCourseFilter) {
         return false;
       }
@@ -229,7 +240,40 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
         (item.due && item.due.toLowerCase().includes(q))
       );
     });
-  }, [templates, selectedCourseFilter, searchQuery]);
+
+    if (sortBy === 'original') {
+      return [...list].sort((a, b) => a.id - b.id);
+    }
+
+    if (sortBy === 'due_asc' || sortBy === 'due_desc') {
+      return [...list].sort((a, b) => {
+        const msA = parseTimeToMs(a.due);
+        const msB = parseTimeToMs(b.due);
+        if (msA === null && msB === null) return a.id - b.id;
+        if (msA === null) return 1;
+        if (msB === null) return -1;
+        if (msA !== msB) {
+          return sortBy === 'due_asc' ? msA - msB : msB - msA;
+        }
+        return a.id - b.id;
+      });
+    }
+
+    if (sortBy === 'course_asc') {
+      return [...list].sort((a, b) => {
+        const cComp = (a.course || '').localeCompare(b.course || '', 'zh-CN');
+        if (cComp !== 0) return cComp;
+        const msA = parseTimeToMs(a.due);
+        const msB = parseTimeToMs(b.due);
+        if (msA === null && msB === null) return a.id - b.id;
+        if (msA === null) return 1;
+        if (msB === null) return -1;
+        return msA - msB;
+      });
+    }
+
+    return list;
+  }, [templates, selectedCourseFilter, searchQuery, sortBy]);
 
   const handleSelectAllFiltered = () => {
     const filteredIds = filteredTemplates.map(t => t.id);
@@ -573,6 +617,22 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
                 </option>
               ))}
             </select>
+
+            {/* Sort Dropdown */}
+            <div className="relative flex items-center shrink-0">
+              <select
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value as ImportPoolSortType)}
+                className="bg-[#141518] border border-[#3a3d46] text-xs text-[#e9e4d8] py-1.5 pl-2 pr-6 rounded outline-none cursor-pointer hover:border-[#6b7cff]/50 focus:border-[#6b7cff] transition-colors appearance-none"
+                title="选择导入池排序方式"
+              >
+                <option value="due_asc">⏳ 截止紧迫优先 (默认)</option>
+                <option value="due_desc">📅 截止远期在前</option>
+                <option value="course_asc">📚 按课程名称排序</option>
+                <option value="original">🔄 原始录入顺序</option>
+              </select>
+              <ArrowUpDown className="w-3 h-3 text-[#8f8b80] absolute right-2 pointer-events-none" />
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
