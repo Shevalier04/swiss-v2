@@ -48,6 +48,13 @@ export const STUDENT_ROSTER: Record<string, string> = {
 };
 
 /**
+ * 全部 42 名学生标准对象数组（用于管理面板与作业下发遍历）
+ */
+export const ALL_STUDENT_LIST: { username: string; name: string }[] = Object.entries(STUDENT_ROSTER)
+  .filter(([uname]) => uname !== 'admin')
+  .map(([username, name]) => ({ username, name }));
+
+/**
  * 智能解析学号对应的真实姓名
  * 优先级：本地自定义姓名 > 花名册预设姓名 > 远端返回有效姓名 > 学号本身
  */

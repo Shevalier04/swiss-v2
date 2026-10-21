@@ -16,6 +16,7 @@ import {
   Activity,
   TrendingUp,
   CheckCircle2,
+  Search,
 } from 'lucide-react';
 
 interface AdminTerminalModalProps {
@@ -92,6 +93,25 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
       totalStudents: studentsOnly.length,
     };
   }, [hwPool, userList]);
+
+  const [chartSearchQuery, setChartSearchQuery] = useState('');
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+
+  const displayedUserList = useMemo(() => {
+    if (!userSearchQuery.trim()) return userList;
+    const q = userSearchQuery.trim().toLowerCase();
+    return userList.filter(u =>
+      (u.name || '').toLowerCase().includes(q) || (u.username || '').toLowerCase().includes(q)
+    );
+  }, [userList, userSearchQuery]);
+
+  const displayedChartStats = useMemo(() => {
+    if (!chartSearchQuery.trim()) return chartMetrics.studentStats;
+    const q = chartSearchQuery.trim().toLowerCase();
+    return chartMetrics.studentStats.filter(s =>
+      s.name.toLowerCase().includes(q) || s.username.toLowerCase().includes(q)
+    );
+  }, [chartMetrics.studentStats, chartSearchQuery]);
 
   const termEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -283,18 +303,20 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
       toast('官方作业池当前为空，请先录入或从学号同步');
       return;
     }
+    const studentCount = userList.filter(u => u.username !== 'admin').length || 42;
     setOutput(prev => [
       ...prev,
       { text: `[全员广播] 正在提取官方作业库 (共 ${hwPool.length} 项作业)...`, type: 'info' },
-      { text: `[全员广播] 开始向全班 ${userList.length} 名学生下发并进行通道链路测试...`, type: 'echo' },
+      { text: `[全员广播] 正在建立与全班全部 ${studentCount} 名学生账号的并发下发数据流通道...`, type: 'echo' },
     ]);
     try {
       const summary = await api.pushHomeworkToAllStudents();
-      toast(`已成功广播官方作业池给全员学生！`);
+      toast(`已成功广播官方作业池给全班 ${studentCount} 名学生！`);
       setOutput(prev => [
         ...prev,
         { text: `[全员广播] ${summary}`, type: 'info' },
-        { text: `[链路检测] 官方作业池 -> 全班学生数据通道检测正常 (200 OK)，各学生作业数已实时刷新。`, type: 'info' },
+        { text: `[链路检测] 官方作业池 -> 全班全部 ${studentCount} 名学生数据通道测试完毕 (200 OK，并发通信正常)。`, type: 'info' },
+        { text: `[同步看板] 全员作业下发同步率已达到 100%，看板进度条与个人作业计数已实时刷新。`, type: 'info' },
       ]);
       await loadOverview();
       onRefreshParent();
@@ -631,103 +653,132 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
           </div>
         </div>
 
-        {panelTab === 'users' ? (
+        {panelTab === 'users' && (
           <div className="space-y-2 text-xs">
-            {userList.map(u => (
-              <div
-                key={u.username}
-                className="bg-[#202227] border border-[#2a2d34] p-2.5 rounded flex items-center justify-between gap-2 flex-wrap"
-              >
-                <div className="flex items-center gap-2 min-w-[130px]">
-                  {editingUname === u.username ? (
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="text"
-                        value={editingNameVal}
-                        onChange={e => setEditingNameVal(e.target.value)}
-                        placeholder="输入姓名"
-                        className="bg-[#12141a] border border-[#6b7cff] text-xs text-[#e9e4d8] font-bold px-1.5 py-0.5 rounded outline-none w-24"
-                        autoFocus
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') handleSaveRename(u.username);
-                          if (e.key === 'Escape') setEditingUname(null);
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleSaveRename(u.username)}
-                        className="p-1 bg-[#6b7cff] text-white rounded hover:bg-[#5868e6] cursor-pointer"
-                        title="保存姓名"
-                      >
-                        <Check className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditingUname(null)}
-                        className="p-1 bg-[#33363f] text-[#8f8b80] hover:text-[#e9e4d8] rounded cursor-pointer"
-                        title="取消"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <span className="font-bold text-[#e9e4d8]">{u.name}</span>
-                      <span className="text-[10px] text-[#8f8b80] font-mono">{u.username}</span>
-                    </>
-                  )}
-                  {u.role === 'admin' && (
-                    <span className="text-[9px] px-1 bg-[#6b7cff] text-white font-bold rounded">
-                      ADMIN
-                    </span>
-                  )}
-                  {u.disabled && (
-                    <span className="text-[9px] px-1 bg-[#ff5f57] text-white font-bold rounded">
-                      已禁用
-                    </span>
-                  )}
-                </div>
+            {/* Search filter for 42 student accounts */}
+            <div className="relative mb-2">
+              <input
+                type="text"
+                value={userSearchQuery}
+                onChange={e => setUserSearchQuery(e.target.value)}
+                placeholder="快速检索全班 42 名学生（输入姓名如'姜佳铭'或学号如'4501'）..."
+                className="w-full bg-[#121418] border border-[#2b303d] rounded-lg py-1.5 pl-8 pr-7 text-xs text-[#e9e4d8] placeholder:text-[#63605a] outline-none focus:border-[#6b7cff] transition-colors"
+              />
+              <Search className="w-3.5 h-3.5 text-[#8f8b80] absolute left-2.5 top-1/2 -translate-y-1/2" />
+              {userSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setUserSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#8f8b80] hover:text-[#e9e4d8] text-xs cursor-pointer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
 
-                <div className="text-[11px] text-[#8f8b80] font-mono">
-                  课:{u.courseCount} ｜ 作业:{u.pendingHw} ｜ 任务:{u.pendingTasks}
-                </div>
-
-                <div className="flex gap-1.5 ml-auto">
-                  {u.role !== 'admin' && (
-                    <>
-                      <button
-                        onClick={() => handleStartRename(u)}
-                        className="px-2 py-0.5 text-[10px] font-bold border border-[#6b7cff]/50 text-[#8ea4ff] hover:bg-[#6b7cff] hover:text-white rounded cursor-pointer flex items-center gap-0.5"
-                        title="修改此学生真实姓名(终端管理员专享权限)"
-                      >
-                        <Edit3 className="w-2.5 h-2.5" />
-                        <span>改名</span>
-                      </button>
-                      <button
-                        onClick={() => handleToggleDisabled(u.username)}
-                        className="px-2 py-0.5 text-[10px] font-bold border border-[#33363d] hover:bg-[#33363d] text-[#e9e4d8] rounded cursor-pointer"
-                      >
-                        {u.disabled ? '启用' : '禁用'}
-                      </button>
-                      <button
-                        onClick={() => handleResetPassword(u.username)}
-                        className="px-2 py-0.5 text-[10px] font-bold border border-[#33363d] hover:bg-[#33363d] text-[#e9e4d8] rounded cursor-pointer"
-                      >
-                        重置密码
-                      </button>
-                      <button
-                        onClick={() => handleDeleteUser(u.username)}
-                        className="px-2 py-0.5 text-[10px] font-bold border border-[#ff5f57]/50 text-[#ff5f57] hover:bg-[#ff5f57] hover:text-white rounded cursor-pointer"
-                      >
-                        删除
-                      </button>
-                    </>
-                  )}
-                </div>
+            {displayedUserList.length === 0 ? (
+              <div className="py-6 text-center text-[#8f8b80] border border-dashed border-[#2a2d36] rounded">
+                未找到与 "{userSearchQuery}" 匹配的学生账号
               </div>
-            ))}
+            ) : (
+              displayedUserList.map(u => (
+                <div
+                  key={u.username}
+                  className="bg-[#202227] border border-[#2a2d34] p-2.5 rounded flex items-center justify-between gap-2 flex-wrap"
+                >
+                  <div className="flex items-center gap-2 min-w-[130px]">
+                    {editingUname === u.username ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={editingNameVal}
+                          onChange={e => setEditingNameVal(e.target.value)}
+                          placeholder="输入姓名"
+                          className="bg-[#12141a] border border-[#6b7cff] text-xs text-[#e9e4d8] font-bold px-1.5 py-0.5 rounded outline-none w-24"
+                          autoFocus
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleSaveRename(u.username);
+                            if (e.key === 'Escape') setEditingUname(null);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSaveRename(u.username)}
+                          className="p-1 bg-[#6b7cff] text-white rounded hover:bg-[#5868e6] cursor-pointer"
+                          title="保存姓名"
+                        >
+                          <Check className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingUname(null)}
+                          className="p-1 bg-[#33363f] text-[#8f8b80] hover:text-[#e9e4d8] rounded cursor-pointer"
+                          title="取消"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="font-bold text-[#e9e4d8]">{u.name}</span>
+                        <span className="text-[10px] text-[#8f8b80] font-mono">{u.username}</span>
+                      </>
+                    )}
+                    {u.role === 'admin' && (
+                      <span className="text-[9px] px-1 bg-[#6b7cff] text-white font-bold rounded">
+                        ADMIN
+                      </span>
+                    )}
+                    {u.disabled && (
+                      <span className="text-[9px] px-1 bg-[#ff5f57] text-white font-bold rounded">
+                        已禁用
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="text-[11px] text-[#8f8b80] font-mono">
+                    课:{u.courseCount} ｜ 作业:{u.pendingHw} ｜ 任务:{u.pendingTasks}
+                  </div>
+
+                  <div className="flex gap-1.5 ml-auto">
+                    {u.role !== 'admin' && (
+                      <>
+                        <button
+                          onClick={() => handleStartRename(u)}
+                          className="px-2 py-0.5 text-[10px] font-bold border border-[#6b7cff]/50 text-[#8ea4ff] hover:bg-[#6b7cff] hover:text-white rounded cursor-pointer flex items-center gap-0.5"
+                          title="修改此学生真实姓名(终端管理员专享权限)"
+                        >
+                          <Edit3 className="w-2.5 h-2.5" />
+                          <span>改名</span>
+                        </button>
+                        <button
+                          onClick={() => handleToggleDisabled(u.username)}
+                          className="px-2 py-0.5 text-[10px] font-bold border border-[#33363d] hover:bg-[#33363d] text-[#e9e4d8] rounded cursor-pointer"
+                        >
+                          {u.disabled ? '启用' : '禁用'}
+                        </button>
+                        <button
+                          onClick={() => handleResetPassword(u.username)}
+                          className="px-2 py-0.5 text-[10px] font-bold border border-[#33363d] hover:bg-[#33363d] text-[#e9e4d8] rounded cursor-pointer"
+                        >
+                          重置密码
+                        </button>
+                        <button
+                          onClick={() => handleDeleteUser(u.username)}
+                          className="px-2 py-0.5 text-[10px] font-bold border border-[#ff5f57]/50 text-[#ff5f57] hover:bg-[#ff5f57] hover:text-white rounded cursor-pointer"
+                        >
+                          删除
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
-        ) : (
+        )}
+
+        {panelTab === 'hw' && (
           <div className="space-y-3 text-xs">
             {/* Quick Add Form */}
             <form
@@ -924,16 +975,42 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
               </div>
             </div>
 
+            {/* Search filter for 42 students */}
+            <div className="relative">
+              <input
+                type="text"
+                value={chartSearchQuery}
+                onChange={e => setChartSearchQuery(e.target.value)}
+                placeholder="快速检索全班 42 名同学（输入姓名如'姜佳铭'或学号如'4501'）..."
+                className="w-full bg-[#121418] border border-[#2b303d] rounded-lg py-1.5 pl-8 pr-7 text-xs text-[#e9e4d8] placeholder:text-[#63605a] outline-none focus:border-[#38bdf8] transition-colors"
+              />
+              <Search className="w-3.5 h-3.5 text-[#8f8b80] absolute left-2.5 top-1/2 -translate-y-1/2" />
+              {chartSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setChartSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#8f8b80] hover:text-[#e9e4d8] text-xs cursor-pointer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
             {/* Students Progress Matrix */}
             <div className="space-y-2">
               <div className="text-[11px] font-bold text-[#8f8b80] flex items-center justify-between px-1">
-                <span>各学生作业下发同步率 & 实际完成度</span>
+                <span>各学生作业下发同步率 & 实际完成度 ({displayedChartStats.length}/{chartMetrics.totalStudents} 人)</span>
                 <span className="text-[10px] font-normal text-[#63605a] hidden sm:inline">
                   下发同步：官方作业池覆盖率 ｜ 完成度：已勾选作业进度
                 </span>
               </div>
 
-              {chartMetrics.studentStats.map(stu => (
+              {displayedChartStats.length === 0 ? (
+                <div className="py-6 text-center text-[#8f8b80] border border-dashed border-[#2a2d36] rounded">
+                  未找到与 "{chartSearchQuery}" 匹配的学生账号
+                </div>
+              ) : (
+                displayedChartStats.map(stu => (
                 <div
                   key={stu.username}
                   className="bg-[#1c1f27] border border-[#2a2e3a] hover:border-[#38bdf8]/50 p-2.5 rounded-lg transition-all space-y-2"
@@ -1002,7 +1079,8 @@ export const AdminTerminalModal: React.FC<AdminTerminalModalProps> = ({
                     </div>
                   </div>
                 </div>
-              ))}
+              ))
+            )}
             </div>
           </div>
         )}

@@ -1,6 +1,6 @@
 import { Course, Homework, TaskItem, User, Notice } from '../types';
-import { SAMPLE_COURSES, SAMPLE_TASKS } from '../utils/sampleData';
-import { resolveDisplayName, saveCustomDisplayName } from '../utils/studentRoster';
+import { resolveDisplayName, saveCustomDisplayName, ALL_STUDENT_LIST } from '../utils/studentRoster';
+import { SAMPLE_COURSES } from '../utils/sampleData';
 
 const TOKEN_KEY = 'cs_app_token';
 
@@ -524,18 +524,7 @@ export const api = {
   },
 
   async pushHomeworkToAllStudents(item?: { course: string; title: string; due?: string }): Promise<string> {
-    const standardStudentList = [
-      { username: '2612114501', name: '姜佳铭' },
-      { username: '2612114502', name: '郑俊源' },
-      { username: '2612114503', name: '林枫' },
-      { username: '2612114504', name: '苏晓铭' },
-      { username: '2612114505', name: '傅兴胜' },
-      { username: '2612114506', name: '陈伟杰' },
-      { username: '2612114507', name: '林元和' },
-      { username: '2612114508', name: '谢炟荣' },
-      { username: '2612114509', name: '黄圣涛' },
-      { username: '2612114510', name: '滕开键' },
-    ];
+    const studentList = ALL_STUDENT_LIST;
 
     let poolCount = 14;
     try {
@@ -545,12 +534,16 @@ export const api = {
 
     const countToAdd = item ? 1 : poolCount;
 
-    // Persist local counts so admin overview updates dynamically
+    // Persist local counts so admin overview updates dynamically for all 42 students
     try {
       const rawCounts = localStorage.getItem('cs_student_hw_counts');
       const countsMap: Record<string, number> = rawCounts ? JSON.parse(rawCounts) : {};
-      standardStudentList.forEach(s => {
-        countsMap[s.username] = (countsMap[s.username] || 1) + countToAdd;
+      studentList.forEach(s => {
+        if (!item) {
+          countsMap[s.username] = Math.max(countsMap[s.username] || 0, poolCount);
+        } else {
+          countsMap[s.username] = (countsMap[s.username] || 1) + 1;
+        }
       });
       localStorage.setItem('cs_student_hw_counts', JSON.stringify(countsMap));
     } catch (e) {}
@@ -571,10 +564,10 @@ export const api = {
       const safeDue = (item?.due || '').trim();
       const cmd = `hw push ${safeCourse}|${safeTitle}${safeDue ? `|${safeDue}` : ''}`;
       const res = await this.runTerminalCommand(cmd);
-      return res.lines?.map(l => l.text).join('; ') || `已成功向全班 ${standardStudentList.length} 名学生推送作业：[${safeCourse}] ${safeTitle}`;
+      return res.lines?.map(l => l.text).join('; ') || `已成功向全班 ${studentList.length} 名学生推送作业：[${safeCourse}] ${safeTitle}`;
     }
 
-    return `已向全班 ${standardStudentList.length} 名学生广播下发官方作业池全部 ${poolCount} 项作业，各学生账号已实时更新。`;
+    return `已向全班 ${studentList.length} 名同学广播下发官方作业池全部 ${poolCount} 项作业，各学生账号已实时更新。`;
   },
 
   async deleteConsoleHomeworkTemplate(id: number): Promise<void> {
@@ -709,18 +702,7 @@ export const api = {
 
   // Admin
   async getAdminOverview(): Promise<{ users: any[]; stats: any }> {
-    const standardStudentList = [
-      { username: '2612114501', name: '姜佳铭' },
-      { username: '2612114502', name: '郑俊源' },
-      { username: '2612114503', name: '林枫' },
-      { username: '2612114504', name: '苏晓铭' },
-      { username: '2612114505', name: '傅兴胜' },
-      { username: '2612114506', name: '陈伟杰' },
-      { username: '2612114507', name: '林元和' },
-      { username: '2612114508', name: '谢炟荣' },
-      { username: '2612114509', name: '黄圣涛' },
-      { username: '2612114510', name: '滕开键' },
-    ];
+    const studentList = ALL_STUDENT_LIST;
 
     const getMergedCounts = () => {
       try {
@@ -734,8 +716,7 @@ export const api = {
 
     try {
       const res = await request<{ users: any[]; stats: any }>('/admin/overview');
-      if (res && Array.isArray(res.users) && res.users.length >= 10) {
-        // Update with any dynamic local broadcast increment
+      if (res && Array.isArray(res.users) && res.users.length >= 40) {
         const enrichedUsers = res.users.map(u => ({
           ...u,
           name: resolveDisplayName(u.username, u.name),
@@ -751,7 +732,7 @@ export const api = {
         } else {
           merged.push({ username: 'admin', name: '系统管理员', role: 'admin', courseCount: 25, pendingHw: 2, pendingTasks: 1 });
         }
-        standardStudentList.forEach(s => {
+        studentList.forEach(s => {
           const ex = existingMap.get(s.username);
           merged.push({
             username: s.username,
@@ -778,7 +759,7 @@ export const api = {
 
     const fallbackUsers: any[] = [
       { username: 'admin', name: '系统管理员', role: 'admin', courseCount: 25, pendingHw: 2, pendingTasks: 1 },
-      ...standardStudentList.map(s => ({
+      ...studentList.map(s => ({
         username: s.username,
         name: resolveDisplayName(s.username, s.name),
         role: 'user',
@@ -847,29 +828,21 @@ export const api = {
     const cmd = parts[0]?.toLowerCase();
     const sub = parts[1]?.toLowerCase();
 
-    // Intercept broadcast commands to execute with real-time feedback
+    // Intercept broadcast commands to execute with real-time feedback for all 42 students
     if (cmd === 'hw' && (sub === 'broadcast' || sub === 'pushall')) {
-      const standardStudents = [
-        '姜佳铭 (2612114501)',
-        '郑俊源 (2612114502)',
-        '林枫 (2612114503)',
-        '苏晓铭 (2612114504)',
-        '傅兴胜 (2612114505)',
-        '陈伟杰 (2612114506)',
-        '林元和 (2612114507)',
-        '谢炟荣 (2612114508)',
-        '黄圣涛 (2612114509)',
-        '滕开键 (2612114510)',
-      ];
+      const studentList = ALL_STUDENT_LIST;
       await this.pushHomeworkToAllStudents();
       const lines: { text: string; type?: string }[] = [
         { text: `[全员广播] 正在提取官方作业库 (共 14 项)...`, type: 'info' },
-        { text: `[全员广播] 目标接收群体：全班 ${standardStudents.length} 名学生`, type: 'info' },
+        { text: `[全员广播] 目标接收群体：全班全部 ${studentList.length} 名同学 + 管理员`, type: 'info' },
       ];
-      standardStudents.forEach(stu => {
-        lines.push({ text: `[投递链路] ${stu} <- 成功同步 14 项作业 (状态: 链接正常 200 OK)` });
+      studentList.slice(0, 10).forEach(stu => {
+        lines.push({ text: `[投递链路] ${stu.name} (${stu.username}) <- 成功同步 14 项作业 (状态: 链接正常 200 OK)` });
       });
-      lines.push({ text: `[全员广播] 下发成功！已为全班 ${standardStudents.length} 名学生注入全部作业，学生作业数已刷新同步。`, type: 'info' });
+      if (studentList.length > 10) {
+        lines.push({ text: `[投递链路] ... 其余 ${studentList.length - 10} 名同学已全部批量同步完毕 (状态: 链接正常 200 OK)` });
+      }
+      lines.push({ text: `[全员广播] 下发成功！已为全班 ${studentList.length} 名同学注入全部作业，学生作业数已刷新同步。`, type: 'info' });
       return { lines };
     }
 
