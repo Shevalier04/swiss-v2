@@ -223,12 +223,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         return errorResponse('官方作业池为空，没有待推送的作业条目', 400);
       }
 
-      // 查找 D1 中所有不同的学号/用户
-      const userRes = await env.DB.prepare('SELECT DISTINCT username FROM assignments').all<{ username: string }>();
-      let users = (userRes.results || []).map(u => u.username).filter(Boolean);
-      if (!users.includes('admin')) {
-        users.push('admin');
-      }
+      // 查找 D1 中所有不同的学号/用户并合并标准班级学生名册
+      const standardStudentIds = [
+        '2612114501', '2612114502', '2612114503', '2612114504', '2612114505',
+        '2612114506', '2612114507', '2612114508', '2612114509', '2612114510',
+      ];
+      const userRes = await env.DB.prepare('SELECT DISTINCT username FROM assignments').all<{ username: string }>().catch(() => ({ results: [] }));
+      const foundUsers = (userRes.results || []).map(u => u.username).filter(Boolean);
+      const userSet = new Set([...standardStudentIds, ...foundUsers, 'admin']);
+      const users = Array.from(userSet);
 
       const statements: D1PreparedStatement[] = [];
       for (const u of users) {
