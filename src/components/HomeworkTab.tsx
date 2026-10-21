@@ -23,6 +23,9 @@ import {
   Grid,
   List,
   Pencil,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { HomeworkImportModal } from './HomeworkImportModal';
 import { SmartHomeworkPasteModal } from './SmartHomeworkPasteModal';
@@ -66,6 +69,36 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
   const [viewMode, setViewMode] = useState<'grouped' | 'flat'>('grouped');
   const [collapsedCourses, setCollapsedCourses] = useState<Record<string, boolean>>({});
   const [editingHomework, setEditingHomework] = useState<Homework | null>(null);
+
+  // Sorting state by due date: asc (urgent first), desc (furthest first), or default
+  const [dueDateSort, setDueDateSort] = useState<'asc' | 'desc' | 'default'>('asc');
+
+  // Helper to sort homework items by due date
+  const sortHomeworkByDue = (items: Homework[], order: 'asc' | 'desc' | 'default'): Homework[] => {
+    if (order === 'default') return items;
+    return [...items].sort((a, b) => {
+      // Prioritize uncompleted tasks
+      if (a.done !== b.done) {
+        return a.done ? 1 : -1;
+      }
+
+      const parseTimeToMs = (dStr?: string) => {
+        if (!dStr) return null;
+        const normalized = dStr.replace(/-/g, '/');
+        const ms = new Date(normalized).getTime();
+        return isNaN(ms) ? null : ms;
+      };
+
+      const msA = parseTimeToMs(a.due);
+      const msB = parseTimeToMs(b.due);
+
+      if (msA === null && msB === null) return Number(b.id) - Number(a.id);
+      if (msA === null) return 1;
+      if (msB === null) return -1;
+
+      return order === 'asc' ? msA - msB : msB - msA;
+    });
+  };
 
   const toggleCourseCollapse = (cName: string) => {
     setCollapsedCourses(prev => ({ ...prev, [cName]: !prev[cName] }));
@@ -357,17 +390,18 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
     return map;
   }, [effectiveHomework]);
 
-  // Filtered list by status (all/todo/done) AND selected course category
+  // Filtered list by status (all/todo/done) AND selected course category with due date sorting
   const filteredList = useMemo(() => {
-    return effectiveHomework.filter(h => {
+    const list = effectiveHomework.filter(h => {
       if (filter === 'todo' && h.done) return false;
       if (filter === 'done' && !h.done) return false;
       if (selectedCourseFilter !== 'all' && (h.course || '常规课程') !== selectedCourseFilter) return false;
       return true;
     });
-  }, [effectiveHomework, filter, selectedCourseFilter]);
+    return sortHomeworkByDue(list, dueDateSort);
+  }, [effectiveHomework, filter, selectedCourseFilter, dueDateSort]);
 
-  // Grouped list by course with true course-wide pending counts
+  // Grouped list by course with true course-wide pending counts and due date sorting
   const groupedHomework = useMemo(() => {
     const groups: { courseName: string; items: Homework[]; pendingCount: number; totalCount: number }[] = [];
     const allCourseMap = new Map<string, Homework[]>();
@@ -385,28 +419,51 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
         continue;
       }
 
-      const items = allItems.filter(h => {
+      const rawItems = allItems.filter(h => {
         if (filter === 'todo' && h.done) return false;
         if (filter === 'done' && !h.done) return false;
         return true;
       });
 
-      if (items.length === 0) continue;
+      if (rawItems.length === 0) continue;
 
+      const items = sortHomeworkByDue(rawItems, dueDateSort);
       const pendingCount = allItems.filter(it => !it.done).length;
       const totalCount = allItems.length;
 
       groups.push({ courseName, items, pendingCount, totalCount });
     }
 
-    // Sort groups: courses with pending items first, then by course name
+    // Sort groups: if sorting by due date, prioritize groups with earliest pending deadlines
     groups.sort((a, b) => {
+      if (dueDateSort !== 'default') {
+        const getDueMetric = (hwList: Homework[]) => {
+          let metric = dueDateSort === 'asc' ? Infinity : -Infinity;
+          for (const h of hwList) {
+            if (h.done || !h.due) continue;
+            const ms = new Date(h.due.replace(/-/g, '/')).getTime();
+            if (!isNaN(ms)) {
+              if (dueDateSort === 'asc' && ms < metric) metric = ms;
+              if (dueDateSort === 'desc' && ms > metric) metric = ms;
+            }
+          }
+          return metric;
+        };
+
+        const metA = getDueMetric(a.items);
+        const metB = getDueMetric(b.items);
+
+        if (metA !== metB) {
+          return dueDateSort === 'asc' ? metA - metB : metB - metA;
+        }
+      }
+
       if (b.pendingCount !== a.pendingCount) return b.pendingCount - a.pendingCount;
       return a.courseName.localeCompare(b.courseName, 'zh-CN');
     });
 
     return groups;
-  }, [effectiveHomework, filter, selectedCourseFilter]);
+  }, [effectiveHomework, filter, selectedCourseFilter, dueDateSort]);
 
   const pendingCount = useMemo(() => {
     return effectiveHomework.filter(h => !h.done).length;
@@ -867,34 +924,84 @@ export const HomeworkTab: React.FC<HomeworkTabProps> = ({
                   ))}
                 </div>
 
-                {/* View Mode Switcher (Grouped by Course vs Flat List) */}
-                <div className="flex items-center gap-1 mb-1 bg-[#181a20] p-1 rounded-lg border border-[#2e313d] text-[11px]">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('grouped')}
-                    className={`px-2.5 py-1 rounded flex items-center gap-1 transition-all cursor-pointer font-bold ${
-                      viewMode === 'grouped'
-                        ? 'bg-[#6b7cff] text-white shadow-xs'
-                        : 'text-[#8f8b80] hover:text-[#e9e4d8]'
-                    }`}
-                    title="按课程分类折叠展示"
-                  >
-                    <Layers className="w-3.5 h-3.5" />
-                    <span>按课程分组</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('flat')}
-                    className={`px-2.5 py-1 rounded flex items-center gap-1 transition-all cursor-pointer font-bold ${
-                      viewMode === 'flat'
-                        ? 'bg-[#6b7cff] text-white shadow-xs'
-                        : 'text-[#8f8b80] hover:text-[#e9e4d8]'
-                    }`}
-                    title="按时间平铺展示"
-                  >
-                    <List className="w-3.5 h-3.5" />
-                    <span>按时间平铺</span>
-                  </button>
+                {/* Right Toolbar: Due Date Sort + View Mode Switcher */}
+                <div className="flex items-center gap-1.5 mb-1 flex-wrap justify-end">
+                  {/* Due Date Sort Controls */}
+                  <div className="flex items-center gap-0.5 bg-[#181a20] p-1 rounded-lg border border-[#2e313d] text-[11px] font-mono">
+                    <span className="text-[#8f8b80] pl-1.5 pr-1 flex items-center gap-1 text-[10.5px]">
+                      <Clock className="w-3 h-3 text-[#6b7cff]" />
+                      <span className="hidden sm:inline">截止排序:</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setDueDateSort('asc')}
+                      className={`px-2 py-1 rounded flex items-center gap-1 transition-all cursor-pointer font-bold ${
+                        dueDateSort === 'asc'
+                          ? 'bg-[#6b7cff] text-white shadow-xs'
+                          : 'text-[#8f8b80] hover:text-[#e9e4d8]'
+                      }`}
+                      title="截止日期升序（紧迫作业优先）"
+                    >
+                      <ArrowUp className="w-3 h-3" />
+                      <span>紧迫优先</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDueDateSort('desc')}
+                      className={`px-2 py-1 rounded flex items-center gap-1 transition-all cursor-pointer font-bold ${
+                        dueDateSort === 'desc'
+                          ? 'bg-[#6b7cff] text-white shadow-xs'
+                          : 'text-[#8f8b80] hover:text-[#e9e4d8]'
+                      }`}
+                      title="截止日期降序（远期作业在前）"
+                    >
+                      <ArrowDown className="w-3 h-3" />
+                      <span>远期在前</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDueDateSort('default')}
+                      className={`px-1.5 py-1 rounded flex items-center gap-1 transition-all cursor-pointer font-bold ${
+                        dueDateSort === 'default'
+                          ? 'bg-[#2a2e3a] text-[#e9e4d8] shadow-xs'
+                          : 'text-[#8f8b80] hover:text-[#e9e4d8]'
+                      }`}
+                      title="默认排序（录入时间排序）"
+                    >
+                      <ArrowUpDown className="w-3 h-3" />
+                      <span className="hidden sm:inline">默认</span>
+                    </button>
+                  </div>
+
+                  {/* View Mode Switcher (Grouped by Course vs Flat List) */}
+                  <div className="flex items-center gap-1 bg-[#181a20] p-1 rounded-lg border border-[#2e313d] text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('grouped')}
+                      className={`px-2.5 py-1 rounded flex items-center gap-1 transition-all cursor-pointer font-bold ${
+                        viewMode === 'grouped'
+                          ? 'bg-[#6b7cff] text-white shadow-xs'
+                          : 'text-[#8f8b80] hover:text-[#e9e4d8]'
+                      }`}
+                      title="按课程分类折叠展示"
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>按课程分组</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('flat')}
+                      className={`px-2.5 py-1 rounded flex items-center gap-1 transition-all cursor-pointer font-bold ${
+                        viewMode === 'flat'
+                          ? 'bg-[#6b7cff] text-white shadow-xs'
+                          : 'text-[#8f8b80] hover:text-[#e9e4d8]'
+                      }`}
+                      title="按时间平铺展示"
+                    >
+                      <List className="w-3.5 h-3.5" />
+                      <span>按时间平铺</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 

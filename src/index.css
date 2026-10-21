@@ -108,9 +108,46 @@
   box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
 }
 
+/* Swiss Timeline Breathing Pulse for upcoming courses */
+@keyframes timelineBreathe {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(107, 124, 255, 0.55);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.1);
+    box-shadow: 0 0 14px 4px rgba(107, 124, 255, 0.75);
+  }
+}
+
+@keyframes timelineGlowBorder {
+  0%, 100% {
+    border-color: rgba(107, 124, 255, 0.3);
+    background-color: rgba(33, 36, 45, 0.65);
+  }
+  50% {
+    border-color: rgba(107, 124, 255, 0.85);
+    background-color: rgba(40, 46, 68, 0.85);
+  }
+}
+
+.animate-timeline-breathe {
+  animation: timelineBreathe 2.2s ease-in-out infinite;
+  will-change: transform, opacity, box-shadow;
+}
+
+.animate-timeline-glow {
+  animation: timelineGlowBorder 2.8s ease-in-out infinite;
+  will-change: border-color, background-color;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-editorial-up,
-  .animate-card-float-in {
+  .animate-card-float-in,
+  .animate-timeline-breathe,
+  .animate-timeline-glow {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;

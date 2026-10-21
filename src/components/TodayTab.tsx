@@ -618,7 +618,7 @@ export const TodayTab: React.FC<TodayTabProps> = ({
           — {previewTomorrow ? '明天没有课' : '今天没有课，好好休息'} —
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-6">
           {[
             { title: '上午 · MORNING', list: displayCourses.filter(c => c.s <= 4) },
             { title: '下午 · AFTERNOON', list: displayCourses.filter(c => c.s >= 5 && c.s <= 8) },
@@ -627,92 +627,191 @@ export const TodayTab: React.FC<TodayTabProps> = ({
             if (!grp.list.length) return null;
             return (
               <div key={grp.title} className="animate-editorial-up" style={{ animationDelay: `${grpIdx * 60 + 100}ms` }}>
-                <div className="text-[9.5px] tracking-[3px] text-[#63605a] font-bold pb-1 mb-1 border-b border-[#33363d]">
-                  {grp.title}
+                {/* Section Period Header */}
+                <div className="flex items-center justify-between text-[10px] tracking-[3px] text-[#8f8b80] font-mono font-bold pb-1.5 mb-2 border-b border-[#33363d]">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 bg-[#6b7cff]" />
+                    {grp.title}
+                  </span>
+                  <span>{grp.list.length} 门课程</span>
                 </div>
-                <div className="divide-y divide-[#2a2d34]">
+
+                {/* Swiss Vertical Timeline Spine & Items */}
+                <div className="relative pl-1">
                   {grp.list.map((c, cIdx) => {
                     const sMin = toMinutes(SLOTS[c.s].s);
                     const eMin = toMinutes(SLOTS[c.e].e);
                     const isDoing = !previewTomorrow && sMin <= currentMinutes && currentMinutes <= eMin;
                     const isDone = !previewTomorrow && currentMinutes > eMin;
+                    const isNext = !previewTomorrow && nextCourse?.id === c.id;
+                    const isLastInGroup = cIdx === grp.list.length - 1;
                     const hwFlag = hwMap[c.name];
                     const staggerDelay = (grpIdx * 3 + cIdx) * 50 + 140;
 
                     return (
                       <div
                         key={c.id}
-                        onClick={() => onOpenCourse(c)}
-                        className={`flex gap-3 py-3.5 px-3 -mx-2 rounded-sm cursor-pointer border border-transparent hover:border-[#6b7cff]/30 hover:bg-[#252832]/60 editorial-card-interactive active:scale-[0.99] animate-card-float-in ${
-                          isDone ? 'opacity-40' : ''
-                        }`}
+                        className="relative flex items-stretch group"
                         style={{
                           animationDelay: `${Math.min(500, staggerDelay)}ms`,
                         }}
                       >
-                        <div className="w-12 shrink-0 font-editorial font-bold text-sm leading-tight">
-                          <div>{SLOTS[c.s].s}</div>
-                          <div className="text-[10px] text-[#8f8b80] font-sans font-normal">
+                        {/* Time Column (Swiss Monospaced Grid) */}
+                        <div className="w-14 sm:w-16 shrink-0 py-3 pr-2 text-right select-none">
+                          <div className={`font-mono font-bold text-xs tracking-tight ${
+                            isDoing ? 'text-[#6b7cff]' : isNext ? 'text-[#e9e4d8]' : isDone ? 'text-[#63605a]' : 'text-[#c8c4b8]'
+                          }`}>
+                            {SLOTS[c.s].s}
+                          </div>
+                          <div className="text-[10px] text-[#716e67] font-mono mt-0.5">
                             {SLOTS[c.e].e}
                           </div>
+                          <div className="text-[9px] font-mono text-[#8f8b80]/70 mt-1 uppercase">
+                            第{c.s}-{c.e}节
+                          </div>
                         </div>
 
-                        <div className="w-3.5 flex justify-center relative shrink-0 pt-1">
-                          <span
-                            className={`w-2 h-2 rounded-full ${
-                              isDoing
-                                ? 'bg-[#6b7cff] ring-4 ring-[#6b7cff]/20'
-                                : isDone
-                                ? 'bg-[#63605a]'
-                                : 'bg-[#e9e4d8]'
-                            }`}
-                          />
-                        </div>
+                        {/* Central Spine Line & Timeline Node */}
+                        <div className="relative w-7 shrink-0 flex flex-col items-center">
+                          {/* Continuous Vertical Timeline Track */}
+                          {!isLastInGroup && (
+                            <div
+                              className={`absolute top-5 bottom-0 w-[2px] transition-colors duration-300 ${
+                                isDoing
+                                  ? 'bg-gradient-to-b from-[#6b7cff] to-[#3a3f55] shadow-[0_0_8px_rgba(107,124,255,0.4)]'
+                                  : isDone
+                                  ? 'bg-[#2b2e36]'
+                                  : 'bg-[#33363d]'
+                              }`}
+                            />
+                          )}
 
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-base text-[#e9e4d8] truncate">
-                              {c.name}
-                            </span>
-                            {hwFlag && (
-                              <span
-                                className={`text-[10px] font-bold px-1.5 py-0.5 border text-xs shrink-0 ${
-                                  hwFlag.urgent
-                                    ? 'bg-[#ff6b57] border-[#ff6b57] text-white'
-                                    : hwFlag.soon
-                                    ? 'bg-[#33270f] border-[#d99a4e] text-[#e0a050]'
-                                    : 'border-[#e9e4d8] text-[#e9e4d8]'
-                                }`}
-                              >
-                                {hwFlag.text}
-                              </span>
+                          {/* Top lead-in line from previous node if doing */}
+                          {cIdx > 0 && isDoing && (
+                            <div className="absolute -top-3 h-5 w-[2px] bg-[#6b7cff] shadow-[0_0_8px_rgba(107,124,255,0.4)]" />
+                          )}
+
+                          {/* Timeline Node Symbol */}
+                          <div className="relative z-10 my-3 flex items-center justify-center">
+                            {isDoing ? (
+                              <div className="relative flex items-center justify-center">
+                                <span className="absolute w-5 h-5 rounded-full bg-[#6b7cff]/30 animate-ping" />
+                                <span className="w-3.5 h-3.5 rounded-full bg-[#6b7cff] ring-4 ring-[#6b7cff]/30 shadow-[0_0_12px_rgba(107,124,255,0.9)] flex items-center justify-center">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                                </span>
+                              </div>
+                            ) : isNext ? (
+                              <div className="relative flex items-center justify-center">
+                                <span className="w-3.5 h-3.5 rounded-full bg-[#8ea4ff] animate-timeline-breathe border-2 border-[#e9e4d8] shadow-[0_0_10px_rgba(142,164,255,0.7)]" />
+                              </div>
+                            ) : isDone ? (
+                              <div className="w-2.5 h-2.5 rounded-full bg-[#2a2d36] border border-[#444855] flex items-center justify-center">
+                                <span className="w-1 h-1 rounded-full bg-[#63605a]" />
+                              </div>
+                            ) : (
+                              <div className="w-2.5 h-2.5 rounded-full bg-[#1d1f24] border-2 border-[#8f8b80] group-hover:border-[#6b7cff] transition-colors" />
                             )}
                           </div>
-
-                          <div className="text-xs text-[#8f8b80] mt-1 truncate">
-                            第{c.s}-{c.e}节 · {c.room || '地点待定'}
-                            {c.teacher ? ` · ${c.teacher}` : ''}
-                          </div>
-
-                          {hwFlag && (
-                            <div className="mt-1.5">
-                              <span className="inline-block text-[11px] px-2 py-0.5 bg-[#23263a] border border-[#4a4e6e] text-[#a8b0f0]">
-                                📌 待完成作业 · {hwFlag.text}
-                              </span>
-                            </div>
-                          )}
                         </div>
 
-                        <div className="font-editorial text-xs italic shrink-0 pt-0.5 text-[#8f8b80]">
-                          {previewTomorrow ? (
-                            <span className="text-[#8ea4ff]">明日课程</span>
-                          ) : isDoing ? (
-                            <span className="text-[#6b7cff] font-bold not-italic">进行中</span>
-                          ) : isDone ? (
-                            '已结束'
-                          ) : (
-                            '未开始'
-                          )}
+                        {/* Course Card Component */}
+                        <div className="flex-1 min-w-0 pb-3 pt-1">
+                          <div
+                            onClick={() => onOpenCourse(c)}
+                            className={`p-3.5 rounded-sm cursor-pointer border transition-all duration-200 editorial-card-interactive active:scale-[0.99] ${
+                              isDoing
+                                ? 'bg-[#1a1f2e] border-l-4 border-l-[#6b7cff] border-t border-r border-b border-[#363f58] shadow-[0_4px_20px_rgba(107,124,255,0.18)]'
+                                : isNext
+                                ? 'bg-[#1e2332] border-l-4 border-l-[#8ea4ff] border-t border-r border-b border-[#3a4460] animate-timeline-glow shadow-md'
+                                : isDone
+                                ? 'bg-[#181a20]/75 border border-[#262830] opacity-45 hover:opacity-85'
+                                : 'bg-[#20232b] border border-[#33363f] hover:border-[#6b7cff]/40 hover:bg-[#252934]'
+                            }`}
+                          >
+                            {/* Card Topline Status & Period */}
+                            <div className="flex items-center justify-between gap-2 mb-1.5 text-[10px] font-mono">
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className="w-2 h-2 rounded-full shrink-0"
+                                  style={{ backgroundColor: isDone ? '#63605a' : c.color || '#4f63e8' }}
+                                />
+                                <span className="text-[#8f8b80] uppercase tracking-wider">
+                                  {c.weeks || '全学期'}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1">
+                                {isDoing ? (
+                                  <span className="px-1.5 py-0.5 rounded-xs bg-[#6b7cff] text-white font-bold tracking-wider text-[9.5px] flex items-center gap-1 shadow-xs">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                                    NOW · 正在上课
+                                  </span>
+                                ) : isNext ? (
+                                  <span className="px-1.5 py-0.5 rounded-xs bg-[#6b7cff]/20 text-[#8ea4ff] border border-[#6b7cff]/40 font-bold tracking-wider text-[9.5px] flex items-center gap-1 animate-pulse">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-[#8ea4ff]" />
+                                    NEXT · 即将开课
+                                  </span>
+                                ) : isDone ? (
+                                  <span className="text-[#63605a]">已结课</span>
+                                ) : (
+                                  <span className="text-[#8f8b80]">{SLOTS[c.s].s} 开始</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Course Main Title */}
+                            <div className="flex items-center justify-between gap-2">
+                              <h4 className={`font-editorial font-bold text-base sm:text-lg leading-snug tracking-wide ${
+                                isDoing ? 'text-white' : isDone ? 'text-[#8f8b80] line-through decoration-[#555]' : 'text-[#e9e4d8]'
+                              }`}>
+                                {c.name}
+                              </h4>
+
+                              {hwFlag && (
+                                <span
+                                  className={`text-[10px] font-bold px-1.5 py-0.5 border shrink-0 ${
+                                    hwFlag.urgent
+                                      ? 'bg-[#ff6b57] border-[#ff6b57] text-white'
+                                      : hwFlag.soon
+                                      ? 'bg-[#33270f] border-[#d99a4e] text-[#e0a050]'
+                                      : 'border-[#e9e4d8] text-[#e9e4d8]'
+                                  }`}
+                                >
+                                  {hwFlag.text}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Clean Swiss Metadata Bar (No pills, quiet typographic separators) */}
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#8f8b80] mt-1.5">
+                              <span className="font-semibold text-[#c8c4b8]">
+                                {c.room || '教室待定'}
+                              </span>
+                              {c.teacher && (
+                                <>
+                                  <span aria-hidden="true" className="text-[#4e515d]">·</span>
+                                  <span>{c.teacher} 老师</span>
+                                </>
+                              )}
+                              <span aria-hidden="true" className="text-[#4e515d]">·</span>
+                              <span className="font-mono text-[11px] text-[#78756e]">
+                                {toMinutes(SLOTS[c.e].e) - toMinutes(SLOTS[c.s].s)} 分钟
+                              </span>
+                            </div>
+
+                            {/* Homework notification ribbon if active */}
+                            {hwFlag && (
+                              <div className="mt-2.5 pt-2 border-t border-[#33363f] flex items-center justify-between text-[11px] text-[#a8b0f0]">
+                                <span className="flex items-center gap-1 truncate">
+                                  <span>📌 该课程有待完成作业</span>
+                                  <span className="text-[#e9e4d8] font-bold">({hwFlag.text})</span>
+                                </span>
+                                <span className="text-[10px] text-[#6b7cff] font-mono shrink-0 ml-1">
+                                  点击查看 ›
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
