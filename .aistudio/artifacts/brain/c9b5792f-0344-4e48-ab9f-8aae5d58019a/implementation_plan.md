@@ -1,27 +1,60 @@
-# Data Clearing Feedback Optimization Implementation Plan
+# 官方作业池同步与覆盖清理机制优化方案
 
-Improve user feedback during "Clear All Data" operations by adding a visual loading spinner and dynamic status text to the action button in the Data Management Modal.
+解决用户反馈的两个核心问题：
+1. **管理员删除作业后官方池未同步更新**：管理员移除作业后，导入列表中仍残留历史作业。
+2. **作业覆盖导入后仍残留被覆盖作业**：导入新作业后，原有的同名/变体作业没有被彻底替换删除。
 
-## User Review & Critical Decisions
+---
 
-> [!IMPORTANT]
-> - **Loading Feedback**: The action button will display a spinning loader icon and change its text to "正在清理..." when a clearing operation is in progress.
-> - **Action Blocking**: The button will be disabled during execution to prevent accidental multiple submissions.
+## 一、问题根因深度分析
 
-## 1. Overview & Core Concept
+### 1. 为什么管理员账号移除了作业，导入时还在？
+- **数据存储隔离与单向追加机制**：学生个人作业库（`homework['admin']`）与系统全局官方作业池（`consoleHomework` / `homework_pool`）是两个独立的存储实体。
+- **历史同步仅增不删**：此前在“转存管理员作业”时，后端接口 `sync_user` 仅执行了遍历追加（`forEach -> addConsoleHomework`），**从未清理已在个人账号中被删除的条目**。因此，管理员在个人作业中删除项目后，官方池中仍然保留着该历史作业。
 
-- **What It Does**: Enhances the `DataManagementModal.tsx` "Clear All" workflow by introducing `loading` state handling directly within the button component.
-- **Key Value**: Provides clear, immediate visual confirmation that the clearing process is active, improving perceived performance and user trust.
+### 2. 为什么覆盖导入后，被覆盖的作业还会保留？
+- **严格全字符匹配的局限**：原有的冲突判断仅支持完全一字不差的字符匹配（`title.toLowerCase() === title.toLowerCase()`）。
+- **平台前缀与小标题变体**：在用户上传的截图例证中：
+  - 导入模态框中的作业为：`学习通-HTML表单设计` 与 `学习通-实验三`
+  - 个人课表作业已存在的条目为：`学习通-实验三-HTML表单设计`
+- 由于二者字符不完全相等，系统误判为“全新未导入作业”并直接新增写入，导致原有的复合标题作业与新导入的简写作业同时存在，未被正确覆盖删除。
 
-## 2. User Experience & Visual Design
+---
 
-- **Interaction**:
-  - Initial State: "清除全部" button.
-  - Active State: Button displays a spinner icon + "正在清理..." text, button opacity reduced (`opacity-50`), `cursor-not-allowed`.
-  - Completion State: Button reverts or modal closes/refreshes.
+## 二、架构设计与解决步骤
 
-## 3. Technical Architecture & Data Strategy
+### 1. 管理员作业池全量镜像同步（Full Sync）
+- **后端同步接口优化 (`server/api.ts` & `server/store.ts`)**：
+  - 将 `syncUserHomeworkToConsolePool`（动作 `sync_user`）升级为**全量镜像同步模式**。
+  - 同步时，将当前管理员账号下的有效作业清单作为唯一权威数据源，自动移除官方池中已被管理员删除的历史孤立条目，实现官方池与管理员个人作业库的实时一致。
+- **官方池单项删除即时生效**：
+  - 增强 `HomeworkImportModal.tsx` 中的单项删除（垃圾桶图标）与清空逻辑，删除后即时触发本地与云端刷新，确保不会残留脏数据。
 
-- **Component Updates (`DataManagementModal.tsx`)**:
-  - Utilize existing `loading` state to conditionally render button content inside the `Clear` tab.
-  - Use `Loader2` from `lucide-react` for the spinner.
+### 2. 智能覆盖与变体深度清理（Smart Overwrite & Cleanup）
+- **多维度智能匹配算法 (`isItemExisting` & `matchHomeworkVariant`)**：
+  - 采用核心语义清洗函数（剥离平台前缀 `学习通-`、`PTA_`、`课堂派-`，以及数字代号 `实验三`、`实验3`）。
+  - 支持双向子串重叠与归一化核心词比对（例如判定 `学习通-HTML表单设计` 与 `学习通-实验三-HTML表单设计` 为同一实质作业）。
+- **彻底替换与完成状态保留 (`handleBatchAddHw` & `batch-sync`)**：
+  - 当导入官方作业时，自动检索并**全量物理删除**当前用户下所有相关的旧变体条目（而不仅仅是第一条完全匹配项）。
+  - 优先继承用户原有的完成标记（`done`），避免覆盖后导致用户已打勾的进度丢失。
+  - 写入最新的官方标题与截止时间，确保页面呈现干净、唯一的作业卡片。
+
+---
+
+## 三、文件修改清单
+
+1. **`server/api.ts` & `server/store.ts`**
+   - 优化 `/homework/console-pool/sync-user` 与 `sync_user` 逻辑，支持全量镜像替换同步。
+   - 增强 `/homework/console-pool/batch-sync` 接口，支持智能变体匹配与全量旧项清理。
+2. **`src/components/HomeworkImportModal.tsx`**
+   - 升级 `isItemExisting` 算法，使其能精准识别带平台前缀或复合命名（如 `实验三-HTML表单设计`）的现有作业，准确标示“已存在 · 勾选将覆盖更新”。
+3. **`src/App.tsx` (`handleBatchAddHw`)**
+   - 在前端导入执行时，批量搜寻并删除同一课程下所有的相似内容变体，杜绝多条残留。
+
+---
+
+## 四、验证与验收标准
+
+1. **管理员同步验证**：在 admin 账号删除某作业后，点击“转存管理员作业”，官方池中的该项作业同步消失。
+2. **覆盖导入验证**：导入 `学习通-HTML表单设计` 时，原有包含该主题的冗余作业（如 `学习通-实验三-HTML表单设计`）被彻底清理并替换，列表只保留一份最完整规范的作业记录。
+3. **完成状态保留验证**：若旧作业已打勾完成，覆盖更新后依然保持完成状态。

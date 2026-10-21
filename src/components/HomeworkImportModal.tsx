@@ -138,14 +138,48 @@ export const HomeworkImportModal: React.FC<HomeworkImportModalProps> = ({
     return list.length ? list : ['Web编程技术', '数据库概论', 'Java开发技术', '计算机网络', '软件工程导论'];
   }, [courses]);
 
-  // Normalized matching helper: course.trim().toLowerCase() and title.trim().toLowerCase()
+  // Smart matching helper to identify duplicates and platform-prefixed variants
+  const cleanTitleForMatching = (title: string): string => {
+    return (title || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^\[.*?\]\s*/, '')
+      .replace(/^(学习通|超星学习通|课堂派|pta|明理云盘|云盘)[\s:：\-_]*/i, '')
+      .replace(/[\s:：\-_]*(学习通|超星学习通|课堂派|pta|明理云盘|云盘)$/i, '')
+      .replace(/[\s\-_—~.,，。！!？?~、:：#*]+/g, '');
+  };
+
+  const isSameHomework = (courseA: string, titleA: string, courseB: string, titleB: string): boolean => {
+    const cA = (courseA || '').trim().toLowerCase();
+    const cB = (courseB || '').trim().toLowerCase();
+    if (cA !== cB && !cA.includes(cB) && !cB.includes(cA)) {
+      return false;
+    }
+
+    const rawA = (titleA || '').trim().toLowerCase();
+    const rawB = (titleB || '').trim().toLowerCase();
+    if (rawA === rawB) return true;
+
+    const cleanA = cleanTitleForMatching(titleA);
+    const cleanB = cleanTitleForMatching(titleB);
+    if (!cleanA || !cleanB) return false;
+    if (cleanA === cleanB) return true;
+
+    if (cleanA.length >= 4 && cleanB.length >= 4) {
+      if (cleanA.includes(cleanB) || cleanB.includes(cleanA)) return true;
+    }
+
+    const normA = cleanA.replace(/三/g, '3').replace(/四/g, '4').replace(/一/g, '1').replace(/二/g, '2');
+    const normB = cleanB.replace(/三/g, '3').replace(/四/g, '4').replace(/一/g, '1').replace(/二/g, '2');
+    if (normA === normB) return true;
+    if (normA.length >= 4 && normB.length >= 4 && (normA.includes(normB) || normB.includes(normA))) return true;
+
+    return false;
+  };
+
   const isItemExisting = (course: string, title: string) => {
-    const c = (course || '').trim().toLowerCase();
-    const t = (title || '').trim().toLowerCase();
-    if (!t) return false;
-    return existingHomework.some(
-      h => (h.course || '').trim().toLowerCase() === c && (h.title || '').trim().toLowerCase() === t
-    );
+    if (!title) return false;
+    return existingHomework.some(h => isSameHomework(h.course, h.title, course, title));
   };
 
   useEffect(() => {

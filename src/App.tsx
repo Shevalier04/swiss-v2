@@ -379,29 +379,76 @@ export default function App() {
       currentHw = await api.getHomework();
     } catch (e) {}
 
-    // Identify duplicates by course.trim().toLowerCase() and title.trim().toLowerCase()
+    // Smart matching helper to identify duplicates and platform-prefixed variants
+    const cleanTitleForMatching = (title: string): string => {
+      return (title || '')
+        .trim()
+        .toLowerCase()
+        .replace(/^\[.*?\]\s*/, '')
+        .replace(/^(学习通|超星学习通|课堂派|pta|明理云盘|云盘)[\s:：\-_]*/i, '')
+        .replace(/[\s:：\-_]*(学习通|超星学习通|课堂派|pta|明理云盘|云盘)$/i, '')
+        .replace(/[\s\-_—~.,，。！!？?~、:：#*]+/g, '');
+    };
+
+    const isSameHomework = (courseA: string, titleA: string, courseB: string, titleB: string): boolean => {
+      const cA = (courseA || '').trim().toLowerCase();
+      const cB = (courseB || '').trim().toLowerCase();
+      if (cA !== cB && !cA.includes(cB) && !cB.includes(cA)) {
+        return false;
+      }
+
+      const rawA = (titleA || '').trim().toLowerCase();
+      const rawB = (titleB || '').trim().toLowerCase();
+      if (rawA === rawB) return true;
+
+      const cleanA = cleanTitleForMatching(titleA);
+      const cleanB = cleanTitleForMatching(titleB);
+      if (!cleanA || !cleanB) return false;
+      if (cleanA === cleanB) return true;
+
+      if (cleanA.length >= 4 && cleanB.length >= 4) {
+        if (cleanA.includes(cleanB) || cleanB.includes(cleanA)) return true;
+      }
+
+      const normA = cleanA.replace(/三/g, '3').replace(/四/g, '4').replace(/一/g, '1').replace(/二/g, '2');
+      const normB = cleanB.replace(/三/g, '3').replace(/四/g, '4').replace(/一/g, '1').replace(/二/g, '2');
+      if (normA === normB) return true;
+      if (normA.length >= 4 && normB.length >= 4 && (normA.includes(normB) || normB.includes(normA))) return true;
+
+      return false;
+    };
+
     const matchesToDelete: number[] = [];
     const preservedDoneMap = new Map<string, boolean>();
 
     for (const item of items) {
-      const cName = (item.course || '').trim().toLowerCase();
-      const tName = (item.title || '').trim().toLowerCase();
-      const matchIndex = currentHw.findIndex(
-        h => (h.course || '').trim().toLowerCase() === cName && (h.title || '').trim().toLowerCase() === tName
-      );
-      if (matchIndex !== -1) {
+      const cName = (item.course || '').trim();
+      const tName = (item.title || '').trim();
+
+      // Find all matching variants in student's current homework
+      const matchingIds: number[] = [];
+      let anyMatchDone = false;
+
+      currentHw.forEach(h => {
+        if (isSameHomework(h.course, h.title, cName, tName)) {
+          matchingIds.push(h.id);
+          if (h.done) anyMatchDone = true;
+        }
+      });
+
+      if (matchingIds.length > 0) {
         updatedCount++;
-        const match = currentHw[matchIndex];
-        matchesToDelete.push(match.id);
-        preservedDoneMap.set(`${cName}__${tName}`, Boolean(match.done));
-        currentHw.splice(matchIndex, 1);
+        matchesToDelete.push(...matchingIds);
+        preservedDoneMap.set(`${cName.toLowerCase()}__${tName.toLowerCase()}`, anyMatchDone);
+        // Exclude matched items so they are not matched twice
+        currentHw = currentHw.filter(h => !matchingIds.includes(h.id));
       } else {
         newCount++;
       }
     }
 
-    // Call api.deleteHomework for each existing matched item to prevent duplicates in Cloudflare D1
-    for (const id of matchesToDelete) {
+    // Call api.deleteHomework for each existing matched variant to completely prune covered records
+    for (const id of Array.from(new Set(matchesToDelete))) {
       try {
         await api.deleteHomework(id);
       } catch (e) {}

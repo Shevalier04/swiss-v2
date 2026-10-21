@@ -501,7 +501,8 @@ export const api = {
       });
       return res;
     } catch (e: any) {
-      // 客户端备用降级逻辑
+      // 客户端备用降级逻辑：清空旧池后全量镜像同步当前管理员作业
+      await this.clearConsoleHomeworkTemplates();
       const userHw = await this.getHomework(username);
       for (const hw of userHw) {
         await this.addConsoleHomeworkTemplate({
@@ -513,7 +514,7 @@ export const api = {
       const updated = await this.getConsoleHomeworkTemplates();
       return {
         success: true,
-        message: `已将管理员 [${username}] 的 ${userHw.length} 项作业同步至官方池`,
+        message: `已全量镜像同步管理员 [${username}] 的 ${userHw.length} 项作业至官方池`,
         templates: updated,
       };
     }

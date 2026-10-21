@@ -399,6 +399,21 @@ class Store {
     this.saveConsoleHomework([]);
   }
 
+  syncAdminHomeworkToPool(adminHomeworkList: { course: string; title: string; due?: string; creator?: string }[]) {
+    // Full mirror sync: Replace official pool with admin's current homework list
+    // This prunes any homework that admin has deleted from their account
+    const newPool = (adminHomeworkList || []).map((item, idx) => ({
+      id: Date.now() + idx + Math.floor(Math.random() * 100),
+      course: item.course || '常规课程',
+      title: item.title,
+      due: item.due,
+      creator: item.creator || 'admin',
+      createdAt: Date.now(),
+    }));
+    this.saveConsoleHomework(newPool);
+    return newPool;
+  }
+
   // Tasks
   getTasks(username: string): TaskItem[] {
     return this.db.tasks[username] || [];

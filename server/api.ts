@@ -549,27 +549,16 @@ apiRouter.post('/homework/console-pool', (req: Request, res: Response) => {
     });
   }
 
-  // 2. 将指定管理员账号（如 admin）转存为官方作业池
+  // 2. 将指定管理员账号（如 admin）全量镜像同步为官方作业池（自动移除已删除的作业）
   if (body.action === 'sync_user') {
     const targetUser = body.username || 'admin';
-    const studentHw = dbStore.getHomework(targetUser);
-    if (!studentHw || studentHw.length === 0) {
-      return res.status(404).json({ error: `账号 [${targetUser}] 当前暂无作业数据` });
-    }
-
-    studentHw.forEach(it => {
-      dbStore.addConsoleHomework({
-        course: it.course,
-        title: it.title,
-        due: it.due,
-        creator: targetUser,
-      });
-    });
+    const studentHw = dbStore.getHomework(targetUser) || [];
+    const pool = dbStore.syncAdminHomeworkToPool(studentHw);
 
     return res.json({
       success: true,
-      message: `已成功将账号 [${targetUser}] 的 ${studentHw.length} 项作业转入官方作业池`,
-      templates: dbStore.getConsoleHomework(),
+      message: `已成功全量镜像同步管理员 [${targetUser}] 的 ${studentHw.length} 项作业至官方作业池`,
+      templates: pool,
     });
   }
 
@@ -630,26 +619,60 @@ apiRouter.post('/homework/console-pool/push', (req: Request, res: Response) => {
 
 apiRouter.post('/homework/console-pool/sync-user', (req: Request, res: Response) => {
   const targetUser = req.body?.username || 'admin';
-  const studentHw = dbStore.getHomework(targetUser);
-  if (!studentHw || studentHw.length === 0) {
-    return res.status(404).json({ error: `账号 [${targetUser}] 当前暂无作业数据` });
-  }
-
-  studentHw.forEach(it => {
-    dbStore.addConsoleHomework({
-      course: it.course,
-      title: it.title,
-      due: it.due,
-      creator: targetUser,
-    });
-  });
+  const studentHw = dbStore.getHomework(targetUser) || [];
+  const pool = dbStore.syncAdminHomeworkToPool(studentHw);
 
   return res.json({
     success: true,
-    message: `已成功将学号 [${targetUser}] 的 ${studentHw.length} 项作业转入官方作业池`,
-    templates: dbStore.getConsoleHomework(),
+    message: `已成功全量镜像同步管理员 [${targetUser}] 的 ${studentHw.length} 项作业至官方作业池`,
+    templates: pool,
   });
 });
+
+function cleanTitleForMatching(title: string): string {
+  return (title || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^\[.*?\]\s*/, '')
+    .replace(/^(学习通|超星学习通|课堂派|pta|明理云盘|云盘)[\s:：\-_]*/i, '')
+    .replace(/[\s:：\-_]*(学习通|超星学习通|课堂派|pta|明理云盘|云盘)$/i, '')
+    .replace(/[\s\-_—~.,，。！!？?~、:：#*]+/g, '');
+}
+
+function isSameHomeworkItem(
+  courseA: string,
+  titleA: string,
+  courseB: string,
+  titleB: string
+): boolean {
+  const cA = (courseA || '').trim().toLowerCase();
+  const cB = (courseB || '').trim().toLowerCase();
+  if (cA !== cB && !cA.includes(cB) && !cB.includes(cA)) {
+    return false;
+  }
+
+  const rawA = (titleA || '').trim().toLowerCase();
+  const rawB = (titleB || '').trim().toLowerCase();
+  if (rawA === rawB) return true;
+
+  const cleanA = cleanTitleForMatching(titleA);
+  const cleanB = cleanTitleForMatching(titleB);
+  if (!cleanA || !cleanB) return false;
+  if (cleanA === cleanB) return true;
+
+  // Substring overlap (e.g. "html表单设计" inside "实验三html表单设计" or vice versa)
+  if (cleanA.length >= 4 && cleanB.length >= 4) {
+    if (cleanA.includes(cleanB) || cleanB.includes(cleanA)) return true;
+  }
+
+  // Normalized number variants (三 vs 3, etc.)
+  const normA = cleanA.replace(/三/g, '3').replace(/四/g, '4').replace(/一/g, '1').replace(/二/g, '2');
+  const normB = cleanB.replace(/三/g, '3').replace(/四/g, '4').replace(/一/g, '1').replace(/二/g, '2');
+  if (normA === normB) return true;
+  if (normA.length >= 4 && normB.length >= 4 && (normA.includes(normB) || normB.includes(normA))) return true;
+
+  return false;
+}
 
 apiRouter.post('/homework/console-pool/batch-sync', (req: Request, res: Response) => {
   const username = getCurrentUser(req);
@@ -666,26 +689,43 @@ apiRouter.post('/homework/console-pool/batch-sync', (req: Request, res: Response
   const added = items.map(it => {
     const course = (it.course || '其他').trim();
     const title = (it.title || '待办作业').trim();
-    const matchIndex = current.findIndex(h =>
-      (h.course || '').trim().toLowerCase() === course.toLowerCase() &&
-      (h.title || '').trim().toLowerCase() === title.toLowerCase()
-    );
+
+    // Find all matching variants for this item
+    const matchingIndices: number[] = [];
+    current.forEach((h, idx) => {
+      if (isSameHomeworkItem(h.course, h.title, course, title)) {
+        matchingIndices.push(idx);
+      }
+    });
+
     let preservedDone = false;
-    if (matchIndex !== -1) {
+    if (matchingIndices.length > 0) {
       updatedCount++;
-      const match = current[matchIndex];
-      preservedDone = Boolean(match.done);
-      dbStore.deleteHomework(username, match.id);
-      current.splice(matchIndex, 1);
+      // Check if any matching item was done
+      preservedDone = matchingIndices.some(idx => Boolean(current[idx]?.done));
+
+      // Delete all matching old variants from dbStore
+      matchingIndices.forEach(idx => {
+        const match = current[idx];
+        if (match) {
+          dbStore.deleteHomework(username, match.id);
+        }
+      });
+      // Filter out matched items from current array
+      current = current.filter((_, idx) => !matchingIndices.includes(idx));
     } else {
       newCount++;
     }
-    return dbStore.addHomework(username, {
+
+    const newItem = dbStore.addHomework(username, {
       course,
       title,
       due: it.due,
       done: preservedDone,
     });
+    // Add to current so subsequent items don't duplicate
+    current.push(newItem);
+    return newItem;
   });
 
   return res.json({

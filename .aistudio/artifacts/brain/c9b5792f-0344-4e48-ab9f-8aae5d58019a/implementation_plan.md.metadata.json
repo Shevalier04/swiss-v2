@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan to improve feedback during data clearing operations by adding a loading spinner and dynamic text to the action button.",
-  "updatedAt": "2026-10-18T03:29:34.963175644Z",
-  "requestFeedback": true,
-  "userFacing": true
+  "summary":  "Implementation plan to fix official homework pool synchronization and ensure clean overwrite without leaving covered duplicate variants.",
+  "updatedAt":  "2026-10-21T06:15:47.652893782Z",
+  "requestFeedback":  true,
+  "userFacing":  true
 }
